@@ -15,13 +15,15 @@ in {
 
     tokenFile = lib.mkOption {
       type = lib.types.path;
+      default = "/etc/opnix-token";
       description = ''
         Path to file containing the 1Password service account token.
         The file should contain only the token and should have appropriate permissions (600).
 
-        Example:
-          Create token file: echo "your-token" > /run/keys/op-token
-          Set permissions: chmod 600 /run/keys/op-token
+        You can set up the token using the opnix CLI:
+          opnix token set
+          # or with a custom path:
+          opnix token set -path /path/to/token
       '';
     };
 
@@ -45,28 +47,25 @@ in {
         mkdir -p ${cfg.outputDir}
         chmod 750 ${cfg.outputDir}
 
-        # Debug: Check if token file exists and is readable
+        # Validate token file existence and permissions
         if [ ! -f ${cfg.tokenFile} ]; then
-          echo "Token file ${cfg.tokenFile} does not exist!"
+          echo "Error: Token file ${cfg.tokenFile} does not exist!" >&2
           exit 1
         fi
 
         if [ ! -r ${cfg.tokenFile} ]; then
-          echo "Token file ${cfg.tokenFile} is not readable!"
+          echo "Error: Token file ${cfg.tokenFile} is not readable!" >&2
           exit 1
         fi
 
-        # Debug: Check token content (length and format)
-        TOKEN=$(cat ${cfg.tokenFile})
-        if [ -z "$TOKEN" ]; then
-          echo "Token file is empty!"
+        # Validate token is not empty (without printing content or length)
+        if [ ! -s ${cfg.tokenFile} ]; then
+          echo "Error: Token file is empty!" >&2
           exit 1
         fi
 
-        echo "Token length: ''${#TOKEN} characters"
-
-        # Run the secrets retrieval tool using token file
-        ${pkgsWithOverlay.opnix}/bin/opnix \
+        # Run the secrets retrieval tool with new command structure
+        ${pkgsWithOverlay.opnix}/bin/opnix secret \
           -token-file ${cfg.tokenFile} \
           -config ${cfg.configFile} \
           -output ${cfg.outputDir}

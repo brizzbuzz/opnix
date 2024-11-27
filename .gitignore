@@ -1,3 +1,5 @@
 .direnv
 result
 vendor
+.idea
+repo_dump.txt

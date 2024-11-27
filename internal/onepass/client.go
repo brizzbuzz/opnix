@@ -1,10 +1,10 @@
 package onepass
 
 import (
-	"strings"
     "context"
     "fmt"
     "os"
+    "strings"
 
     "github.com/1password/onepassword-sdk-go"
 )
@@ -13,19 +13,32 @@ type Client struct {
     client *onepassword.Client
 }
 
-func NewClient(tokenFile string) (*Client, error) {
-    var token string
+// GetToken retrieves token from environment or file
+func GetToken(tokenFile string) (string, error) {
+    // First try environment variable
+    if token := os.Getenv("OP_SERVICE_ACCOUNT_TOKEN"); token != "" {
+        return token, nil
+    }
 
+    // Then try token file
     if tokenFile != "" {
         data, err := os.ReadFile(tokenFile)
         if err != nil {
-            return nil, fmt.Errorf("failed to read token file: %w", err)
+            return "", fmt.Errorf("failed to read token file: %w", err)
         }
-        token = strings.TrimSpace(string(data))
+        token := strings.TrimSpace(string(data))
+        if token != "" {
+            return token, nil
+        }
     }
 
-    if token == "" {
-        return nil, fmt.Errorf("no token provided")
+    return "", fmt.Errorf("no token provided")
+}
+
+func NewClient(tokenFile string) (*Client, error) {
+    token, err := GetToken(tokenFile)
+    if err != nil {
+        return nil, err
     }
 
     client, err := onepassword.NewClient(

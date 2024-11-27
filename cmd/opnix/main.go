@@ -1,35 +1,51 @@
 package main
 
 import (
-    "flag"
+    "fmt"
     "log"
-
-    "github.com/brizzbuzz/opnix/internal/config"
-    "github.com/brizzbuzz/opnix/internal/onepass"
-    "github.com/brizzbuzz/opnix/internal/secrets"
+    "os"
 )
 
+type command interface {
+    Name() string
+    Init([]string) error
+    Run() error
+}
+
 func main() {
-    configFile := flag.String("config", "secrets.json", "Path to secrets configuration file")
-    outputDir := flag.String("output", "secrets", "Directory to store retrieved secrets")
-    tokenFile := flag.String("token-file", "", "Path to file containing 1Password service account token")
-    flag.Parse()
-
-    // Load configuration
-    cfg, err := config.Load(*configFile)
-    if err != nil {
-        log.Fatalf("Error loading config: %v", err)
+    cmds := []command{
+        newSecretCommand(),
+        newTokenCommand(),
     }
 
-    // Initialize 1Password client
-    client, err := onepass.NewClient(*tokenFile)
-    if err != nil {
-        log.Fatalf("Error creating 1Password client: %v", err)
+    if len(os.Args) < 2 {
+        printUsage(cmds)
+        os.Exit(1)
     }
 
-    // Process secrets
-    processor := secrets.NewProcessor(client, *outputDir)
-    if err := processor.Process(cfg); err != nil {
-        log.Fatalf("Error processing secrets: %v", err)
+    subcommand := os.Args[1]
+
+    for _, cmd := range cmds {
+        if cmd.Name() == subcommand {
+            if err := cmd.Init(os.Args[2:]); err != nil {
+                log.Fatalf("Failed to initialize %s: %v", cmd.Name(), err)
+            }
+            if err := cmd.Run(); err != nil {
+                log.Fatalf("Failed to run %s: %v", cmd.Name(), err)
+            }
+            return
+        }
     }
+
+    fmt.Fprintf(os.Stderr, "Unknown command: %s\n", subcommand)
+    printUsage(cmds)
+    os.Exit(1)
+}
+
+func printUsage(cmds []command) {
+    fmt.Fprintf(os.Stderr, "Usage: opnix <command> [options]\n\n")
+    fmt.Fprintf(os.Stderr, "Available commands:\n")
+    fmt.Fprintf(os.Stderr, "  secret    Manage and retrieve secrets from 1Password\n")
+    fmt.Fprintf(os.Stderr, "  token     Manage the 1Password service account token\n\n")
+    fmt.Fprintf(os.Stderr, "Use 'opnix <command> -h' for command-specific help\n")
 }

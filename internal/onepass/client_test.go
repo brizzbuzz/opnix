@@ -20,7 +20,7 @@ func TestGetToken(t *testing.T) {
         os.Setenv("OP_SERVICE_ACCOUNT_TOKEN", expected)
         defer os.Unsetenv("OP_SERVICE_ACCOUNT_TOKEN")
 
-        got, err := getToken("")
+        got, err := GetToken("")
         if err != nil {
             t.Fatalf("Unexpected error: %v", err)
         }
@@ -37,7 +37,7 @@ func TestGetToken(t *testing.T) {
             t.Fatalf("Failed to write token file: %v", err)
         }
 
-        got, err := getToken(tokenFile)
+        got, err := GetToken(tokenFile)
         if err != nil {
             t.Fatalf("Unexpected error: %v", err)
         }
@@ -48,7 +48,8 @@ func TestGetToken(t *testing.T) {
 
     // Test no token provided
     t.Run("no token", func(t *testing.T) {
-        _, err := getToken("")
+        os.Unsetenv("OP_SERVICE_ACCOUNT_TOKEN")
+        _, err := GetToken("")
         if err == nil {
             t.Error("Expected error when no token provided")
         }
@@ -56,9 +57,12 @@ func TestGetToken(t *testing.T) {
 
     // Test invalid token file
     t.Run("invalid token file", func(t *testing.T) {
-        _, err := getToken("/nonexistent/file")
+        os.Unsetenv("OP_SERVICE_ACCOUNT_TOKEN")
+        _, err := GetToken("/nonexistent/file")
         if err == nil {
             t.Error("Expected error with invalid token file")
         }
     })
 }
+
+// Note: We'll skip actual client initialization tests since they require valid tokens
