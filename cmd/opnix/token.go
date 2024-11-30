@@ -1,10 +1,10 @@
+// cmd/opnix/token.go
 package main
 
 import (
 	"bufio"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,31 +62,49 @@ func (t *tokenCommand) Run() error {
 	}
 }
 
-func (t *tokenCommand) setToken() error {
-	// Create directory if it doesn't exist
+// checkWritePermissions verifies we can write to the directory
+func (t *tokenCommand) checkWritePermissions() error {
 	dir := filepath.Dir(t.path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+
+	// Check if directory exists
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		// Try to create the directory
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("cannot create directory %s: %w", dir, err)
+		}
 	}
 
-	fmt.Fprintln(os.Stderr, "Please paste your 1Password service account token (press Ctrl+D when done):")
+	// Test write permissions by attempting to create a temporary file
+	tmpFile := filepath.Join(dir, ".opnix-write-test")
+	f, err := os.OpenFile(tmpFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		if os.IsPermission(err) {
+			return fmt.Errorf("insufficient permissions to write to %s. Try running with sudo", dir)
+		}
+		return fmt.Errorf("cannot write to directory %s: %w", dir, err)
+	}
+	f.Close()
+	os.Remove(tmpFile)
+
+	return nil
+}
+
+func (t *tokenCommand) setToken() error {
+	// Check permissions before prompting for input
+	if err := t.checkWritePermissions(); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "Please paste your 1Password service account token (press Enter when done):\n")
 
 	reader := bufio.NewReader(os.Stdin)
-	var token strings.Builder
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("error reading input: %w", err)
-		}
-		token.WriteString(line)
+	token, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("error reading input: %w", err)
 	}
 
 	// Trim whitespace and newlines
-	tokenStr := strings.TrimSpace(token.String())
+	tokenStr := strings.TrimSpace(token)
 	if tokenStr == "" {
 		return fmt.Errorf("token cannot be empty")
 	}
