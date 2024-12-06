@@ -9,7 +9,7 @@
 
 # OPNix: 1Password Secrets for NixOS
 
-Secure integration between 1Password and NixOS for managing secrets during system builds.
+Secure integration between 1Password and NixOS for managing secrets during system builds and home directory setup.
 
 ## Overview
 ```
@@ -17,6 +17,7 @@ Secure integration between 1Password and NixOS for managing secrets during syste
 │ • Secure secret storage in 1Password       │
 │ • NixOS integration via service accounts   │
 │ • Build-time secret retrieval             │
+│ • Home Manager secret management          │
 ╰────────────────────────────────────────────╯
 ```
 
@@ -35,6 +36,14 @@ Add OPNix to your NixOS configuration:
         ./configuration.nix
       ];
     };
+
+    # If using home-manager
+    homeConfigurations.yourusername = home-manager.lib.homeManagerConfiguration {
+      modules = [
+        opnix.homeManagerModules.default
+        ./home.nix
+      ];
+    };
   };
 }
 ```
@@ -47,13 +56,13 @@ Add OPNix to your NixOS configuration:
 2. Store the token securely:
    ```bash
    # Using the opnix CLI (recommended)
-   opnix token set
+   sudo opnix token set
    
    # Or with a custom path
-   opnix token set -path /path/to/token
+   sudo opnix token set -path /path/to/token
    ```
 
-3. Create a secrets configuration file:
+3. Create a secrets configuration file for system secrets:
    ```json
    {
      "secrets": [
@@ -74,9 +83,30 @@ Add OPNix to your NixOS configuration:
    {
      services.onepassword-secrets = {
        enable = true;
+       users = [ "yourusername" ];  # Users that need secret access
        tokenFile = "/etc/opnix-token";  # Default location
        configFile = "/path/to/your/secrets.json";
        outputDir = "/var/lib/opnix/secrets";  # Optional, this is the default
+     };
+   }
+   ```
+
+5. (Optional) Set up Home Manager integration for user-specific secrets:
+   ```nix
+   {
+     programs.onepassword-secrets = {
+       enable = true;
+       secrets = [
+         {
+           # Paths are relative to home directory
+           path = ".ssh/id_rsa";
+           reference = "op://Personal/ssh-key/private-key"
+         }
+         {
+           path = ".config/secret-app/token";
+           reference = "op://Work/api/token"
+         }
+       ];
      };
    }
    ```
@@ -95,9 +125,10 @@ Add OPNix to your NixOS configuration:
 ## Security Considerations
 
 ### Token Storage
-- Store token file with proper permissions (600)
+- Store token file with proper permissions (600 for system, 640 for group access)
 - Default location: `/etc/opnix-token`
 - Never commit tokens to version control
+- Access controlled via onepassword-secrets group for Home Manager users
 
 ### Service Account Security
 - Use minimal required permissions
@@ -113,6 +144,7 @@ Common issues and solutions:
    Error: Token file not found
    ▪ Check if /etc/opnix-token exists
    ▪ Verify file permissions
+   ▪ For Home Manager, ensure user in onepassword-secrets group
    ```
 
 2. Authentication Problems:

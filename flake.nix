@@ -6,18 +6,14 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = {
-    nixpkgs,
-    flake-utils,
-    ...
-  }:
+  outputs = { nixpkgs, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system: let
-      pkgs = import nixpkgs { 
+      pkgs = import nixpkgs {
         inherit system;
         # Allow unfree packages for test dependencies
         config.allowUnfree = true;
       };
-      
+
       src = import ./nix/source.nix { inherit pkgs; };
 
       buildOpnix = pkgs.buildGoModule {
@@ -38,6 +34,9 @@
       formatter = pkgs.alejandra;
     }) // {
       nixosModules.default = import ./nix/module.nix;
+
+      # Add Home Manager module output
+      homeManagerModules.default = import ./nix/hm-module.nix;
 
       overlays.default = final: prev: {
         opnix = import ./nix/package.nix { pkgs = final; };

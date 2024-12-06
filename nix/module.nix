@@ -1,5 +1,6 @@
 { config, lib, pkgs, ... }: let
   cfg = config.services.onepassword-secrets;
+  
   # Create a new pkgs instance with our overlay
   pkgsWithOverlay = import pkgs.path {
     inherit (pkgs) system;
@@ -9,6 +10,9 @@
       })
     ];
   };
+
+  # Create a system group for opnix token access
+  opnixGroup = "onepassword-secrets";
 in {
   options.services.onepassword-secrets = {
     enable = lib.mkEnableOption "1Password secrets integration";
@@ -18,7 +22,8 @@ in {
       default = "/etc/opnix-token";
       description = ''
         Path to file containing the 1Password service account token.
-        The file should contain only the token and should have appropriate permissions (600).
+        The file should contain only the token and should have appropriate permissions (640).
+        Will be readable by members of the ${opnixGroup} group.
 
         You can set up the token using the opnix CLI:
           opnix token set
@@ -37,15 +42,38 @@ in {
       default = "/var/lib/opnix/secrets";
       description = "Directory to store retrieved secrets";
     };
+
+    # New option for users that should have access to the token
+    users = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = "Users that should have access to the 1Password token through group membership";
+      example = [ "alice" "bob" ];
+    };
   };
 
   config = lib.mkIf cfg.enable {
+    # Create the opnix group
+    users.groups.${opnixGroup} = {};
+
+    # Add specified users to the opnix group
+    users.users = lib.mkMerge (map (user: {
+      ${user}.extraGroups = [ opnixGroup ];
+    }) cfg.users);
+
     system.activationScripts.onepassword-secrets = {
       deps = [];
       text = ''
         # Ensure output directory exists with correct permissions
         mkdir -p ${cfg.outputDir}
         chmod 750 ${cfg.outputDir}
+
+        # Set up token file with correct group permissions if it exists
+        if [ -f ${cfg.tokenFile} ]; then
+          # Ensure token file has correct ownership and permissions
+          chown root:${opnixGroup} ${cfg.tokenFile}
+          chmod 640 ${cfg.tokenFile}
+        fi
 
         # Validate token file existence and permissions
         if [ ! -f ${cfg.tokenFile} ]; then
@@ -58,13 +86,13 @@ in {
           exit 1
         fi
 
-        # Validate token is not empty (without printing content or length)
+        # Validate token is not empty
         if [ ! -s ${cfg.tokenFile} ]; then
           echo "Error: Token file is empty!" >&2
           exit 1
         fi
 
-        # Run the secrets retrieval tool with new command structure
+        # Run the secrets retrieval tool
         ${pkgsWithOverlay.opnix}/bin/opnix secret \
           -token-file ${cfg.tokenFile} \
           -config ${cfg.configFile} \
