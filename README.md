@@ -158,6 +158,7 @@ Common issues and solutions:
    ```
    Error: Cannot access secret
    ▪ Verify secret reference format
+     ▪ Install 1password CLI and verify using op item get --format json
    ▪ Check service account vault access
    ```
 
