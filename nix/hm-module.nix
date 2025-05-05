@@ -32,7 +32,6 @@ let
       };
     };
   };
-
 in {
   options.programs.onepassword-secrets = {
     enable = lib.mkEnableOption "1Password secrets integration";
@@ -41,6 +40,20 @@ in {
       type = lib.types.path;
       default = "${config.xdg.configHome}/opnix/secrets.json";
       description = "Path to secrets configuration file";
+    };
+
+    tokenFile = lib.mkOption {
+      type = lib.types.path;
+      default = "/etc/opnix-token";
+      description = ''
+        Path to file containing the 1Password service account token.
+        The file should contain only the token and should have appropriate permissions (640).
+
+        You can set up the token using the opnix CLI:
+          opnix token set
+          # or with a custom path:
+          opnix token set -path /path/to/token
+      '';
     };
 
     secrets = lib.mkOption {
@@ -102,18 +115,15 @@ in {
 
     # Retrieve secrets during activation
     home.activation.retrieveOpnixSecrets = lib.hm.dag.entryAfter ["writeOpnixConfig"] ''
-      if [ ! -r /etc/opnix-token ]; then
-        echo "Error: Cannot read system token at /etc/opnix-token" >&2
-        echo "Make sure you are in the onepassword-secrets group:" >&2
-        echo "1. Enable the NixOS module with your user:" >&2
-        echo "   services.onepassword-secrets.users = [ \"$USER\" ];" >&2
-        echo "2. Rebuild your system: sudo nixos-rebuild switch" >&2
+      if [ ! -r ${lib.escapeShellArg cfg.tokenFile} ]; then
+        echo "Error: Cannot read system token at ${cfg.tokenFile}" >&2
+        echo "Make sure the system token can be accessed by your user." >&2
         exit 1
       fi
 
       # Retrieve secrets using system token
       $DRY_RUN_CMD ${pkgsWithOverlay.opnix}/bin/opnix secret \
-        -token-file /etc/opnix-token \
+        -token-file ${lib.escapeShellArg cfg.tokenFile} \
         -config ${lib.escapeShellArg cfg.configFile} \
         -output "$HOME"
     '';
