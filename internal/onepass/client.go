@@ -54,5 +54,5 @@ func NewClient(tokenFile string) (*Client, error) {
 }
 
 func (c *Client) ResolveSecret(reference string) (string, error) {
-    return c.client.Secrets.Resolve(context.Background(), reference)
+    return c.client.Secrets().Resolve(context.Background(), reference)
 }
