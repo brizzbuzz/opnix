@@ -1,9 +1,8 @@
 { pkgs }:
 pkgs.buildGoModule {
   pname = "opnix";
-  version = "0.1.0";
+  version = "0.1.1";
   src = ../.;
-  vendorHash = "sha256-K8xgmXvhZ4PFUryu9/UsnwZ0Lohi586p1bzqBQBp1jo=";
+  vendorHash = "sha256-rmwZue0X6o0q29ZVe9bWHBOxHVx/yiMJXHc4urooaHo=";
   subPackages = [ "cmd/opnix" ];
 }
-
