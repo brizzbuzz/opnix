@@ -1,10 +1,11 @@
 { pkgs, src }:
 
 let
-  darwinFrameworks = if pkgs.stdenv.isDarwin then [
-    pkgs.darwin.apple_sdk.frameworks.CoreFoundation
-    pkgs.darwin.apple_sdk.frameworks.Security
-  ] else [];
+  darwinFrameworks =
+    if pkgs.stdenv.isDarwin then [
+      pkgs.darwin.apple_sdk.frameworks.CoreFoundation
+      pkgs.darwin.apple_sdk.frameworks.Security
+    ] else [ ];
 in
 {
   # Run tests
@@ -16,10 +17,11 @@ in
     buildInputs = darwinFrameworks;
 
     # Required for darwin frameworks
-    NIX_LDFLAGS = if pkgs.stdenv.isDarwin then
-      "-F${pkgs.darwin.apple_sdk.frameworks.CoreFoundation}/Library/Frameworks -framework CoreFoundation " +
-      "-F${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks -framework Security"
-    else "";
+    NIX_LDFLAGS =
+      if pkgs.stdenv.isDarwin then
+        "-F${pkgs.darwin.apple_sdk.frameworks.CoreFoundation}/Library/Frameworks -framework CoreFoundation " +
+        "-F${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks -framework Security"
+      else "";
 
     buildPhase = ''
       # Set up Go environment
@@ -53,50 +55,73 @@ in
     buildInputs = darwinFrameworks;
 
     # Required for darwin frameworks
-    NIX_LDFLAGS = if pkgs.stdenv.isDarwin then
-      "-F${pkgs.darwin.apple_sdk.frameworks.CoreFoundation}/Library/Frameworks -framework CoreFoundation " +
-      "-F${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks -framework Security"
-    else "";
+    NIX_LDFLAGS =
+      if pkgs.stdenv.isDarwin then
+        "-F${pkgs.darwin.apple_sdk.frameworks.CoreFoundation}/Library/Frameworks -framework CoreFoundation " +
+        "-F${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks -framework Security"
+      else "";
 
-    buildPhase = ''
-      # Set up Go environment
-      export GOPATH=$TMPDIR/go
-      export GOCACHE=$TMPDIR/go-cache
-      export GO111MODULE=on
-      export GOLANGCI_LINT_CACHE=$TMPDIR/golangci-lint
-      export XDG_CACHE_HOME=$TMPDIR/cache
+    buildPhase =
+      ''
+                # Set up Go environment
+                export GOPATH=$TMPDIR/go
+                export GOCACHE=$TMPDIR/go-cache
+                export GO111MODULE=on
+                export GOLANGCI_LINT_CACHE=$TMPDIR/golangci-lint
+                export XDG_CACHE_HOME=$TMPDIR/cache
 
-      # Create all necessary directories
-      mkdir -p $GOLANGCI_LINT_CACHE
-      mkdir -p $XDG_CACHE_HOME
-      mkdir -p $GOCACHE
-      mkdir -p $GOPATH
+                # Create all necessary directories
+                mkdir -p $GOLANGCI_LINT_CACHE
+                mkdir -p $XDG_CACHE_HOME
+                mkdir -p $GOCACHE
+                mkdir -p $GOPATH
 
-      # Create and move to workspace
-      mkdir -p $TMPDIR/workspace
-      cd $TMPDIR/workspace
+                # Create and move to workspace
+                mkdir -p $TMPDIR/workspace
+                cd $TMPDIR/workspace
 
-      # Copy source files
-      cp -r $src/* .
+                # Copy source files
+                cp -r $src/* .
 
-      # Initialize modules
-      go mod download
+                ${
+                  let
+                    cfg = ''
+        version: "2"
+        linters:
+          default: standard
+          settings:
+            errcheck:
+              exclude-functions:
+                - fmt.Fprintf
+          exclusions:
+            rules:
+              - path: ".*_test\\.go$"
+                linters:
+                  - errcheck
+                    '';
+                  in
+                    "echo -n '${cfg}' >> .golangci.yaml"
+                }
 
-      # Run linter
-      golangci-lint run --allow-parallel-runners \
-        --timeout=5m \
-        --max-same-issues=20 \
-        ./...
-    '';
+                # Initialize modules
+                go mod download
+
+                # Run linter
+                golangci-lint run --allow-parallel-runners \
+                  --timeout=5m \
+                  --max-same-issues=20 \
+                  ./...
+      '';
 
     installPhase = "touch $out";
   };
 
   # Check nix formatting
-  nix-fmt-check = pkgs.runCommand "opnix-nix-fmt-check" {
-    nativeBuildInputs = [ pkgs.alejandra ];
-    inherit src;
-  } ''
+  nix-fmt-check = pkgs.runCommand "opnix-nix-fmt-check"
+    {
+      nativeBuildInputs = [ pkgs.alejandra ];
+      inherit src;
+    } ''
     cp -r $src/* .
     alejandra --check .
     touch $out

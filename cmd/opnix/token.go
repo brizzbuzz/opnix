@@ -83,8 +83,8 @@ func (t *tokenCommand) checkWritePermissions() error {
 		}
 		return fmt.Errorf("cannot write to directory %s: %w", dir, err)
 	}
-	f.Close()
-	os.Remove(tmpFile)
+	_ = f.Close()
+	_ = os.Remove(tmpFile)
 
 	return nil
 }
