@@ -54,7 +54,7 @@ in
     };
 
     # nix-darwin will not assign a default gid
-    opnixGid = lib.mkOption {
+    groupId = lib.mkOption {
       type = lib.types.ints.between 500 1000;
       default = 600;
       description = "An unused group id to assign to the Opnix group. You can see existing groups by running `dscl . list /Groups PrimaryGroupID | tr -s ' ' | sort -n -t ' ' -k2,2`.";
@@ -68,7 +68,7 @@ in
       # Create the opnix group
       users.groups.${opnixGroup} = {
         members = cfg.users;
-        gid = cfg.opnixGid;
+        gid = cfg.groupId;
       };
 
       # Add the opnix binary to the users environment
