@@ -60,69 +60,69 @@ in
       description = "An unused group id to assign to the Opnix group. You can see existing groups by running `dscl . list /Groups PrimaryGroupID | tr -s ' ' | sort -n -t ' ' -k2,2`.";
       example = 555;
     };
+  };
 
-    config = lib.mkIf cfg.enable {
-      # Let nix-darwin know it's allowed to mess with this group
-      users.knownGroups = [ opnixGroup ];
+  config = lib.mkIf (cfg.enable) {
+    # Let nix-darwin know it's allowed to mess with this group
+    users.knownGroups = [ opnixGroup ];
 
-      # Create the opnix group
-      users.groups.${opnixGroup} = {
-        members = cfg.users;
-        gid = cfg.groupId;
-      };
-
-      # Add the opnix binary to the users environment
-      users.users = builtins.listToAttrs (map
-        (username: {
-          name = username;
-          value = {
-            packages = [
-              pkgsWithOverlay.opnix
-            ];
-          };
-        })
-        cfg.users);
-
-
-      # nix-darwin doesn't support arbitrary activation script names,
-      # so have to use a specific one.
-      #
-      # See source for details: https://github.com/nix-darwin/nix-darwin/blob/2f140d6ac8840c6089163fb43ba95220c230f22b/modules/system/activation-scripts.nix#L118 
-      system.activationScripts.extraActivation.text = ''
-        # Ensure output directory exists with correct permissions
-        mkdir -p ${cfg.outputDir}
-        chmod 750 ${cfg.outputDir}
-
-        # Set up token file with correct group permissions if it exists
-        if [ -f ${cfg.tokenFile} ]; then
-          # Ensure token file has correct ownership and permissions
-          chown root:${opnixGroup} ${cfg.tokenFile}
-          chmod 640 ${cfg.tokenFile}
-        fi
-
-        # Validate token file existence and permissions
-        if [ ! -f ${cfg.tokenFile} ]; then
-          echo "Error: Token file ${cfg.tokenFile} does not exist!" >&2
-          exit 1
-        fi
-
-        if [ ! -r ${cfg.tokenFile} ]; then
-          echo "Error: Token file ${cfg.tokenFile} is not readable!" >&2
-          exit 1
-        fi
-
-        # Validate token is not empty
-        if [ ! -s ${cfg.tokenFile} ]; then
-          echo "Error: Token file is empty!" >&2
-          exit 1
-        fi
-
-        # Run the secrets retrieval tool
-        ${pkgsWithOverlay.opnix}/bin/opnix secret \
-          -token-file ${cfg.tokenFile} \
-          -config ${cfg.configFile} \
-          -output ${cfg.outputDir}
-      '';
+    # Create the opnix group
+    users.groups.${opnixGroup} = {
+      members = cfg.users;
+      gid = cfg.groupId;
     };
+
+    # Add the opnix binary to the users environment
+    users.users = builtins.listToAttrs (map
+      (username: {
+        name = username;
+        value = {
+          packages = [
+            pkgsWithOverlay.opnix
+          ];
+        };
+      })
+      cfg.users);
+
+
+    # nix-darwin doesn't support arbitrary activation script names,
+    # so have to use a specific one.
+    #
+    # See source for details: https://github.com/nix-darwin/nix-darwin/blob/2f140d6ac8840c6089163fb43ba95220c230f22b/modules/system/activation-scripts.nix#L118 
+    system.activationScripts.extraActivation.text = ''
+      # Ensure output directory exists with correct permissions
+      mkdir -p ${cfg.outputDir}
+      chmod 750 ${cfg.outputDir}
+
+      # Set up token file with correct group permissions if it exists
+      if [ -f ${cfg.tokenFile} ]; then
+        # Ensure token file has correct ownership and permissions
+        chown root:${opnixGroup} ${cfg.tokenFile}
+        chmod 640 ${cfg.tokenFile}
+      fi
+
+      # Validate token file existence and permissions
+      if [ ! -f ${cfg.tokenFile} ]; then
+        echo "Error: Token file ${cfg.tokenFile} does not exist!" >&2
+        exit 1
+      fi
+
+      if [ ! -r ${cfg.tokenFile} ]; then
+        echo "Error: Token file ${cfg.tokenFile} is not readable!" >&2
+        exit 1
+      fi
+
+      # Validate token is not empty
+      if [ ! -s ${cfg.tokenFile} ]; then
+        echo "Error: Token file is empty!" >&2
+        exit 1
+      fi
+
+      # Run the secrets retrieval tool
+      ${pkgsWithOverlay.opnix}/bin/opnix secret \
+        -token-file ${cfg.tokenFile} \
+        -config ${cfg.configFile} \
+        -output ${cfg.outputDir}
+    '';
   };
 }
