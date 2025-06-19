@@ -37,6 +37,14 @@ Add OPNix to your NixOS configuration:
       ];
     };
 
+    # If using nix-darwin
+    darwinConfigurations.yourhostname = nix-darwin.lib.darwinSystem {
+      modules = [
+        opnix.darwinModules.default
+        ./configuration.nix
+      ];
+    };
+
     # If using home-manager
     homeConfigurations.yourusername = home-manager.lib.homeManagerConfiguration {
       modules = [
@@ -44,6 +52,7 @@ Add OPNix to your NixOS configuration:
         ./home.nix
       ];
     };
+
   };
 }
 ```
@@ -87,6 +96,14 @@ Add OPNix to your NixOS configuration:
        tokenFile = "/etc/opnix-token";  # Default location
        configFile = "/path/to/your/secrets.json";
        outputDir = "/var/lib/opnix/secrets";  # Optional, this is the default
+
+       # For darwin systems only:
+       #
+       # groupId = 600; 
+       #
+       # 600 is the default, but you should probably run
+       # `dscl . list /Groups PrimaryGroupID | tr -s ' ' | sort -n -t ' ' -k2,2`
+       # to find an unused gid.
      };
    }
    ```

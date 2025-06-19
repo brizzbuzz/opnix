@@ -35,6 +35,8 @@
     }) // {
       nixosModules.default = import ./nix/module.nix;
 
+      darwinModules.default = import ./nix/darwin-module.nix;
+
       # Add Home Manager module output
       homeManagerModules.default = import ./nix/hm-module.nix;
 
