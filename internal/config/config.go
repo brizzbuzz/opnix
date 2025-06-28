@@ -9,15 +9,19 @@ import (
 )
 
 type Secret struct {
-	Path      string `json:"path"`
-	Reference string `json:"reference"`
-	Owner     string `json:"owner,omitempty"`
-	Group     string `json:"group,omitempty"`
-	Mode      string `json:"mode,omitempty"`
+	Path      string            `json:"path"`
+	Reference string            `json:"reference"`
+	Owner     string            `json:"owner,omitempty"`
+	Group     string            `json:"group,omitempty"`
+	Mode      string            `json:"mode,omitempty"`
+	Symlinks  []string          `json:"symlinks,omitempty"`
+	Variables map[string]string `json:"variables,omitempty"`
 }
 
 type Config struct {
-	Secrets []Secret `json:"secrets"`
+	Secrets      []Secret          `json:"secrets"`
+	PathTemplate string            `json:"pathTemplate,omitempty"`
+	Defaults     map[string]string `json:"defaults,omitempty"`
 }
 
 // convertToValidationSecrets converts config secrets to validation format
@@ -25,11 +29,15 @@ func (c *Config) convertToValidationSecrets() []validation.SecretData {
 	secrets := make([]validation.SecretData, len(c.Secrets))
 	for i, s := range c.Secrets {
 		secrets[i] = validation.SecretData{
-			Path:      s.Path,
-			Reference: s.Reference,
-			Owner:     s.Owner,
-			Group:     s.Group,
-			Mode:      s.Mode,
+			Path:         s.Path,
+			Reference:    s.Reference,
+			Owner:        s.Owner,
+			Group:        s.Group,
+			Mode:         s.Mode,
+			Symlinks:     s.Symlinks,
+			Variables:    s.Variables,
+			PathTemplate: c.PathTemplate,
+			Defaults:     c.Defaults,
 		}
 	}
 	return secrets
@@ -92,9 +100,38 @@ func LoadMultiple(paths []string) (*Config, error) {
 			)
 		}
 		allSecrets = append(allSecrets, config.Secrets...)
+
+		// Merge path templates and defaults (last file wins)
+		if config.PathTemplate != "" {
+			// Will be set by the last config file that has it
+		}
+		if len(config.Defaults) > 0 {
+			// Will be set by the last config file that has it
+		}
 	}
 
-	mergedConfig := &Config{Secrets: allSecrets}
+	// Use the last config's template and defaults for merged config
+	var finalPathTemplate string
+	var finalDefaults map[string]string
+
+	for _, path := range paths {
+		config, _ := Load(path) // We know this works from above
+		if config.PathTemplate != "" {
+			finalPathTemplate = config.PathTemplate
+		}
+		if len(config.Defaults) > 0 {
+			finalDefaults = make(map[string]string)
+			for k, v := range config.Defaults {
+				finalDefaults[k] = v
+			}
+		}
+	}
+
+	mergedConfig := &Config{
+		Secrets:      allSecrets,
+		PathTemplate: finalPathTemplate,
+		Defaults:     finalDefaults,
+	}
 
 	// Validate the merged configuration for cross-file conflicts
 	validator := validation.NewValidator()

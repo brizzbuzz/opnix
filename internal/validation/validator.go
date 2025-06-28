@@ -21,11 +21,15 @@ func NewValidator() *Validator {
 
 // Secret represents a secret for validation
 type SecretData struct {
-	Path      string
-	Reference string
-	Owner     string
-	Group     string
-	Mode      string
+	Path         string
+	Reference    string
+	Owner        string
+	Group        string
+	Mode         string
+	Symlinks     []string
+	Variables    map[string]string
+	PathTemplate string
+	Defaults     map[string]string
 }
 
 // ValidateConfigStruct validates a config with slice of SecretData
@@ -58,8 +62,18 @@ func (v *Validator) validateSecret(secret SecretData, secretName string, seenPat
 		return err
 	}
 
-	// Validate path
-	if err := v.validatePath(secret.Path, secretName, seenPaths); err != nil {
+	// Validate path and resolve final path
+	finalPath, err := v.resolvePath(secret.Path, secret.PathTemplate, secret.Variables, secret.Defaults, secretName)
+	if err != nil {
+		return err
+	}
+
+	if err := v.validatePath(finalPath, secretName, seenPaths); err != nil {
+		return err
+	}
+
+	// Validate symlinks
+	if err := v.validateSymlinks(secret.Symlinks, secretName, seenPaths); err != nil {
 		return err
 	}
 
@@ -71,6 +85,171 @@ func (v *Validator) validateSecret(secret SecretData, secretName string, seenPat
 	// Validate permissions
 	if err := v.validateMode(secret.Mode, secretName); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// resolvePath resolves the final path using templates and variables
+func (v *Validator) resolvePath(path, pathTemplate string, variables, defaults map[string]string, secretName string) (string, error) {
+	// If path is explicitly set, use it directly
+	if path != "" {
+		return v.substituteVariables(path, variables, defaults, secretName)
+	}
+
+	// If no path template is set, return error
+	if pathTemplate == "" {
+		return "", errors.ConfigValidationError(
+			fmt.Sprintf("%s.path", secretName),
+			"<empty>",
+			"Path cannot be empty and no pathTemplate is configured",
+			[]string{
+				"Specify a path directly in the secret configuration",
+				"Or configure a pathTemplate at the config level",
+				"Example template: /etc/secrets/{service}/{name}",
+			},
+		)
+	}
+
+	// Use template to generate path
+	return v.substituteVariables(pathTemplate, variables, defaults, secretName)
+}
+
+// substituteVariables replaces template variables in a path
+func (v *Validator) substituteVariables(template string, variables, defaults map[string]string, secretName string) (string, error) {
+	result := template
+
+	// Create combined variable map (variables override defaults)
+	allVars := make(map[string]string)
+	for k, v := range defaults {
+		allVars[k] = v
+	}
+	for k, v := range variables {
+		allVars[k] = v
+	}
+
+	// Find all template variables {varname}
+	varPattern := regexp.MustCompile(`\{([^}]+)\}`)
+	matches := varPattern.FindAllStringSubmatch(template, -1)
+
+	for _, match := range matches {
+		placeholder := match[0] // {varname}
+		varName := match[1]     // varname
+
+		value, exists := allVars[varName]
+		if !exists {
+			availableVars := make([]string, 0, len(allVars))
+			for k := range allVars {
+				availableVars = append(availableVars, k)
+			}
+
+			return "", errors.ConfigValidationError(
+				fmt.Sprintf("%s template variable", secretName),
+				varName,
+				fmt.Sprintf("Template variable '{%s}' not found in variables or defaults", varName),
+				append([]string{
+					fmt.Sprintf("Add '%s' to the secret's variables", varName),
+					fmt.Sprintf("Or add '%s' to config defaults", varName),
+					"Template: " + template,
+				}, fmt.Sprintf("Available variables: %v", availableVars)),
+			)
+		}
+
+		// Validate variable value doesn't contain path traversal or dangerous patterns
+		if err := v.validateVariableValue(value, varName, secretName); err != nil {
+			return "", err
+		}
+
+		result = strings.ReplaceAll(result, placeholder, value)
+	}
+
+	return result, nil
+}
+
+// validateVariableValue validates that a template variable value is safe
+func (v *Validator) validateVariableValue(value, varName, secretName string) error {
+	if strings.Contains(value, "..") {
+		return errors.ConfigValidationError(
+			fmt.Sprintf("%s.variables.%s", secretName, varName),
+			value,
+			"Variable value contains path traversal attempt (..)",
+			[]string{
+				"Remove '..' from the variable value",
+				"Use clean directory/file names without path traversal",
+			},
+		)
+	}
+
+	// Check for potentially dangerous characters
+	dangerousChars := []string{";", "&", "|", "$", "`", "(", ")", "<", ">"}
+	for _, char := range dangerousChars {
+		if strings.Contains(value, char) {
+			return errors.ConfigValidationError(
+				fmt.Sprintf("%s.variables.%s", secretName, varName),
+				value,
+				fmt.Sprintf("Variable value contains potentially dangerous character: %s", char),
+				[]string{
+					"Use only alphanumeric characters, hyphens, and underscores in variable values",
+					"Avoid shell metacharacters for security",
+				},
+			)
+		}
+	}
+
+	return nil
+}
+
+// validateSymlinks validates symlink paths and checks for conflicts
+func (v *Validator) validateSymlinks(symlinks []string, secretName string, seenPaths map[string]string) error {
+	for i, symlink := range symlinks {
+		symlinkName := fmt.Sprintf("%s.symlinks[%d]", secretName, i)
+
+		if symlink == "" {
+			return errors.ConfigValidationError(
+				symlinkName,
+				"<empty>",
+				"Symlink path cannot be empty",
+				[]string{
+					"Specify a valid symlink path",
+					"Remove empty symlink entries from the array",
+				},
+			)
+		}
+
+		// Check for path traversal
+		if strings.Contains(symlink, "..") {
+			return errors.ConfigValidationError(
+				symlinkName,
+				symlink,
+				"Symlink path contains path traversal attempt (..)",
+				[]string{
+					"Remove '..' from the symlink path",
+					"Use absolute paths for symlinks outside the base directory",
+				},
+			)
+		}
+
+		// Validate absolute symlink paths for security
+		if strings.HasPrefix(symlink, "/") {
+			if err := v.validateAbsolutePath(symlink, symlinkName); err != nil {
+				return err
+			}
+		}
+
+		// Check for duplicate symlink paths
+		if existingSecret, exists := seenPaths[symlink]; exists {
+			return errors.ConfigValidationError(
+				symlinkName,
+				symlink,
+				fmt.Sprintf("Duplicate symlink path (conflicts with %s)", existingSecret),
+				[]string{
+					"Each symlink must have a unique path",
+					"Change the symlink path to something unique",
+				},
+			)
+		}
+
+		seenPaths[symlink] = fmt.Sprintf("%s (symlink)", secretName)
 	}
 
 	return nil

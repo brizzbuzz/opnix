@@ -70,8 +70,25 @@ in {
           path = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
-            description = "Custom path for the secret file. If null, uses outputDir + secret name";
+            description = "Custom path for the secret file. If null, uses pathTemplate or outputDir + secret name";
             example = "/etc/ssl/certs/app.pem";
+          };
+
+          symlinks = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [];
+            description = "List of symlink paths that should point to this secret";
+            example = ["/etc/ssl/certs/legacy.pem" "/opt/service/ssl/cert.pem"];
+          };
+
+          variables = lib.mkOption {
+            type = lib.types.attrsOf lib.types.str;
+            default = {};
+            description = "Variables for path template substitution";
+            example = {
+              service = "postgresql";
+              environment = "prod";
+            };
           };
 
           owner = lib.mkOption {
@@ -111,7 +128,35 @@ in {
           owner = "caddy";
           group = "caddy";
           mode = "0644";
+          symlinks = ["/etc/ssl/certs/legacy.pem"];
         };
+        "service/config" = {
+          reference = "op://Vault/Service/config";
+          variables = {
+            service = "postgresql";
+            environment = "prod";
+          };
+        };
+      };
+    };
+
+    pathTemplate = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Path template for secrets when no explicit path is specified.
+        Variables can be substituted using {variable} syntax.
+      '';
+      example = "/etc/secrets/{service}/{name}";
+    };
+
+    defaults = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = {};
+      description = "Default variables for path template substitution";
+      example = {
+        environment = "production";
+        service = "default";
       };
     };
   };
@@ -139,8 +184,12 @@ in {
               owner = secret.owner;
               group = secret.group;
               mode = secret.mode;
+              symlinks = secret.symlinks;
+              variables = secret.variables;
             })
             cfg.secrets;
+          pathTemplate = cfg.pathTemplate;
+          defaults = cfg.defaults;
         })
       else null;
 

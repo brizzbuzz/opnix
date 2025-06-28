@@ -6,6 +6,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/brizzbuzz/opnix/internal/config"
@@ -17,8 +18,10 @@ type SecretClient interface {
 }
 
 type Processor struct {
-	client    SecretClient
-	outputDir string
+	client       SecretClient
+	outputDir    string
+	pathTemplate string
+	defaults     map[string]string
 }
 
 func NewProcessor(client SecretClient, outputDir string) *Processor {
@@ -28,7 +31,24 @@ func NewProcessor(client SecretClient, outputDir string) *Processor {
 	}
 }
 
+func NewProcessorWithConfig(client SecretClient, outputDir, pathTemplate string, defaults map[string]string) *Processor {
+	return &Processor{
+		client:       client,
+		outputDir:    outputDir,
+		pathTemplate: pathTemplate,
+		defaults:     defaults,
+	}
+}
+
 func (p *Processor) Process(cfg *config.Config) error {
+	// Update processor with config-level settings
+	if cfg.PathTemplate != "" {
+		p.pathTemplate = cfg.PathTemplate
+	}
+	if len(cfg.Defaults) > 0 {
+		p.defaults = cfg.Defaults
+	}
+
 	if err := os.MkdirAll(p.outputDir, 0755); err != nil {
 		return errors.FileOperationError(
 			"Creating output directory",
@@ -68,10 +88,18 @@ func (p *Processor) processSecret(secret config.Secret, secretName string) error
 		)
 	}
 
-	// Determine output path
-	outputPath := filepath.Join(p.outputDir, secret.Path)
+	// Determine output path with enhanced path management
+	outputPath, err := p.resolveSecretPathWithTemplate(secret, secretName)
+	if err != nil {
+		return err
+	}
 
-	// Create parent directory if needed
+	// Validate the resolved path for security
+	if err := p.validateSecretPath(outputPath, secretName); err != nil {
+		return err
+	}
+
+	// Create parent directory if needed (validation already ensured it's writable)
 	parentDir := filepath.Dir(outputPath)
 	if err := os.MkdirAll(parentDir, 0755); err != nil {
 		return errors.FileOperationError(
@@ -112,6 +140,11 @@ func (p *Processor) processSecret(secret config.Secret, secretName string) error
 		if err := p.setOwnership(outputPath, secret.Owner, secret.Group, secretName); err != nil {
 			return err
 		}
+	}
+
+	// Create symlinks if specified
+	if err := p.createSymlinks(outputPath, secret.Symlinks, secretName); err != nil {
+		return err
 	}
 
 	return nil
@@ -222,4 +255,239 @@ func (p *Processor) getAvailableGroups() []string {
 	}
 
 	return groups
+}
+
+// resolveSecretPath resolves the final path for a secret based on custom path logic (legacy)
+func (p *Processor) resolveSecretPath(secretPath, secretName string) string {
+	// If path is absolute, use it directly (custom path management)
+	if filepath.IsAbs(secretPath) {
+		return secretPath
+	}
+
+	// For relative paths, combine with outputDir (backward compatibility)
+	return filepath.Join(p.outputDir, secretPath)
+}
+
+// resolveSecretPathWithTemplate resolves the final path for a secret with template support
+func (p *Processor) resolveSecretPathWithTemplate(secret config.Secret, secretName string) (string, error) {
+	// If path is explicitly set, use it with variable substitution
+	if secret.Path != "" {
+		resolvedPath, err := p.substituteVariables(secret.Path, secret.Variables, secretName)
+		if err != nil {
+			return "", err
+		}
+		return p.resolveSecretPath(resolvedPath, secretName), nil
+	}
+
+	// If no path template is configured, return error
+	if p.pathTemplate == "" {
+		return "", errors.ConfigError(
+			fmt.Sprintf("Resolving path for %s", secretName),
+			"No path specified and no pathTemplate configured",
+			nil,
+		)
+	}
+
+	// Use template with variable substitution
+	resolvedPath, err := p.substituteVariables(p.pathTemplate, secret.Variables, secretName)
+	if err != nil {
+		return "", err
+	}
+
+	return p.resolveSecretPath(resolvedPath, secretName), nil
+}
+
+// validateSecretPath validates that the resolved path is secure and accessible
+func (p *Processor) validateSecretPath(resolvedPath, secretName string) error {
+	// Check for path traversal attempts
+	if strings.Contains(resolvedPath, "..") {
+		return errors.FileOperationError(
+			fmt.Sprintf("Validating path for %s", secretName),
+			resolvedPath,
+			"Path contains path traversal attempt (..)",
+			nil,
+		)
+	}
+
+	// Check for potentially dangerous system locations
+	dangerousPaths := []string{
+		"/bin", "/sbin", "/usr/bin", "/usr/sbin",
+		"/boot", "/dev", "/proc", "/sys",
+		"/etc/passwd", "/etc/shadow", "/etc/group",
+	}
+
+	for _, dangerous := range dangerousPaths {
+		if strings.HasPrefix(resolvedPath, dangerous) {
+			return errors.FileOperationError(
+				fmt.Sprintf("Validating path for %s", secretName),
+				resolvedPath,
+				fmt.Sprintf("Path targets potentially dangerous system location: %s", dangerous),
+				nil,
+			)
+		}
+	}
+
+	// Check if parent directory is writable (or can be created)
+	parentDir := filepath.Dir(resolvedPath)
+	if err := p.ensureDirectoryWritable(parentDir); err != nil {
+		return errors.FileOperationError(
+			fmt.Sprintf("Validating parent directory for %s", secretName),
+			parentDir,
+			"Parent directory is not writable or cannot be created",
+			err,
+		)
+	}
+
+	return nil
+}
+
+// ensureDirectoryWritable ensures a directory exists and is writable
+func (p *Processor) ensureDirectoryWritable(dir string) error {
+	// Try to create the directory if it doesn't exist
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	// Test write permissions by creating a temporary file
+	testFile := filepath.Join(dir, ".opnix-write-test")
+	if err := os.WriteFile(testFile, []byte("test"), 0600); err != nil {
+		return err
+	}
+
+	// Clean up test file
+	os.Remove(testFile)
+	return nil
+}
+
+// createSymlinks creates symlinks for a secret file
+func (p *Processor) createSymlinks(targetPath string, symlinks []string, secretName string) error {
+	for i, symlinkPath := range symlinks {
+		symlinkName := fmt.Sprintf("%s.symlinks[%d]", secretName, i)
+
+		// Validate symlink path
+		if err := p.validateSecretPath(symlinkPath, symlinkName); err != nil {
+			return err
+		}
+
+		// Create parent directory for symlink if needed
+		parentDir := filepath.Dir(symlinkPath)
+		if err := os.MkdirAll(parentDir, 0755); err != nil {
+			return errors.FileOperationError(
+				fmt.Sprintf("Creating parent directory for symlink %s", symlinkName),
+				parentDir,
+				"Failed to create parent directory for symlink",
+				err,
+			)
+		}
+
+		// Remove existing symlink or file if it exists
+		if err := os.Remove(symlinkPath); err != nil && !os.IsNotExist(err) {
+			return errors.FileOperationError(
+				fmt.Sprintf("Removing existing symlink %s", symlinkName),
+				symlinkPath,
+				"Failed to remove existing symlink or file",
+				err,
+			)
+		}
+
+		// Create the symlink
+		if err := os.Symlink(targetPath, symlinkPath); err != nil {
+			return errors.FileOperationError(
+				fmt.Sprintf("Creating symlink %s", symlinkName),
+				symlinkPath,
+				fmt.Sprintf("Failed to create symlink to %s", targetPath),
+				err,
+			)
+		}
+	}
+
+	return nil
+}
+
+// substituteVariables replaces template variables in a path
+func (p *Processor) substituteVariables(template string, variables map[string]string, secretName string) (string, error) {
+	result := template
+
+	// Create combined variable map (secret variables override defaults)
+	allVars := make(map[string]string)
+	for k, v := range p.defaults {
+		allVars[k] = v
+	}
+	for k, v := range variables {
+		allVars[k] = v
+	}
+
+	// Find all template variables {varname}
+	for strings.Contains(result, "{") && strings.Contains(result, "}") {
+		start := strings.Index(result, "{")
+		end := strings.Index(result[start:], "}")
+		if end == -1 {
+			break
+		}
+		end += start
+
+		placeholder := result[start : end+1] // {varname}
+		varName := result[start+1 : end]     // varname
+
+		value, exists := allVars[varName]
+		if !exists {
+			return "", errors.ConfigError(
+				fmt.Sprintf("Processing template variable for %s", secretName),
+				fmt.Sprintf("Template variable '{%s}' not found in variables or defaults", varName),
+				nil,
+			)
+		}
+
+		// Validate variable value doesn't contain dangerous patterns
+		if err := p.validateVariableValue(value, varName, secretName); err != nil {
+			return "", err
+		}
+
+		result = strings.ReplaceAll(result, placeholder, value)
+	}
+
+	return result, nil
+}
+
+// validateVariableValue validates that a template variable value is safe
+func (p *Processor) validateVariableValue(value, varName, secretName string) error {
+	if strings.Contains(value, "..") {
+		return errors.ConfigError(
+			fmt.Sprintf("Validating variable %s for %s", varName, secretName),
+			fmt.Sprintf("Variable value '%s' contains path traversal attempt (..)", value),
+			nil,
+		)
+	}
+
+	return nil
+}
+
+// cleanupBrokenSymlinks removes broken symlinks for a secret
+func (p *Processor) cleanupBrokenSymlinks(symlinks []string, secretName string) error {
+	for i, symlinkPath := range symlinks {
+		symlinkName := fmt.Sprintf("%s.symlinks[%d]", secretName, i)
+
+		// Check if symlink exists and is broken
+		if _, err := os.Stat(symlinkPath); os.IsNotExist(err) {
+			continue // Symlink doesn't exist, nothing to clean
+		}
+
+		// Check if it's a symlink
+		if linkInfo, err := os.Lstat(symlinkPath); err == nil && linkInfo.Mode()&os.ModeSymlink != 0 {
+			// Check if target exists
+			if _, err := os.Stat(symlinkPath); os.IsNotExist(err) {
+				// Symlink exists but target doesn't - it's broken
+				if err := os.Remove(symlinkPath); err != nil {
+					return errors.FileOperationError(
+						fmt.Sprintf("Cleaning up broken symlink %s", symlinkName),
+						symlinkPath,
+						"Failed to remove broken symlink",
+						err,
+					)
+				}
+			}
+		}
+	}
+
+	return nil
 }
