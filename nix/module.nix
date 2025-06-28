@@ -73,6 +73,27 @@ in {
             description = "Custom path for the secret file. If null, uses outputDir + secret name";
             example = "/etc/ssl/certs/app.pem";
           };
+
+          owner = lib.mkOption {
+            type = lib.types.str;
+            default = "root";
+            description = "User who owns the secret file";
+            example = "caddy";
+          };
+
+          group = lib.mkOption {
+            type = lib.types.str;
+            default = "root";
+            description = "Group that owns the secret file";
+            example = "caddy";
+          };
+
+          mode = lib.mkOption {
+            type = lib.types.str;
+            default = "0600";
+            description = "File permissions in octal notation";
+            example = "0644";
+          };
         };
       });
       default = {};
@@ -87,6 +108,9 @@ in {
         "ssl/cert" = {
           reference = "op://Vault/SSL/certificate";
           path = "/etc/ssl/certs/app.pem";
+          owner = "caddy";
+          group = "caddy";
+          mode = "0644";
         };
       };
     };
@@ -112,6 +136,9 @@ in {
                 then secret.path
                 else name;
               reference = secret.reference;
+              owner = secret.owner;
+              group = secret.group;
+              mode = secret.mode;
             })
             cfg.secrets;
         })
@@ -126,12 +153,20 @@ in {
     lib.mkMerge [
       # Validation assertions
       {
-        assertions = [
-          {
-            assertion = configCount > 0;
-            message = "OpNix: At least one of configFiles or secrets must be specified";
-          }
-        ];
+        assertions =
+          [
+            {
+              assertion = configCount > 0;
+              message = "OpNix: At least one of configFiles or secrets must be specified";
+            }
+          ]
+          ++ (lib.flatten (lib.mapAttrsToList (name: secret: [
+              {
+                assertion = builtins.match "^[0-7]{3,4}$" secret.mode != null;
+                message = "OpNix secret '${name}': mode '${secret.mode}' is not a valid octal permission (e.g., 0644, 0600)";
+              }
+            ])
+            cfg.secrets));
       }
 
       # Main configuration

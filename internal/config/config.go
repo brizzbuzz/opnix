@@ -9,6 +9,9 @@ import (
 type Secret struct {
 	Path      string `json:"path"`
 	Reference string `json:"reference"`
+	Owner     string `json:"owner,omitempty"`
+	Group     string `json:"group,omitempty"`
+	Mode      string `json:"mode,omitempty"`
 }
 
 type Config struct {

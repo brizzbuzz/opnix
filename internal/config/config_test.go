@@ -181,3 +181,105 @@ func TestValidate(t *testing.T) {
 		}
 	})
 }
+
+func TestSecretOwnership(t *testing.T) {
+	t.Run("secret with ownership", func(t *testing.T) {
+		secret := Secret{
+			Path:      "ssl/cert",
+			Reference: "op://vault/ssl/cert",
+			Owner:     "caddy",
+			Group:     "caddy",
+			Mode:      "0644",
+		}
+
+		if secret.Owner != "caddy" {
+			t.Errorf("Expected owner caddy, got %s", secret.Owner)
+		}
+		if secret.Group != "caddy" {
+			t.Errorf("Expected group caddy, got %s", secret.Group)
+		}
+		if secret.Mode != "0644" {
+			t.Errorf("Expected mode 0644, got %s", secret.Mode)
+		}
+	})
+
+	t.Run("secret with defaults", func(t *testing.T) {
+		secret := Secret{
+			Path:      "database/password",
+			Reference: "op://vault/db/password",
+			// Owner, Group, Mode not specified - should work fine
+		}
+
+		if secret.Owner != "" {
+			t.Errorf("Expected empty owner, got %s", secret.Owner)
+		}
+		if secret.Group != "" {
+			t.Errorf("Expected empty group, got %s", secret.Group)
+		}
+		if secret.Mode != "" {
+			t.Errorf("Expected empty mode, got %s", secret.Mode)
+		}
+	})
+}
+
+func TestLoadWithOwnership(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "opnix-tests-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	configPath := filepath.Join(tmpDir, "config.json")
+	configData := `{
+		"secrets": [
+			{
+				"path": "ssl/cert",
+				"reference": "op://vault/ssl/cert",
+				"owner": "caddy",
+				"group": "caddy",
+				"mode": "0644"
+			},
+			{
+				"path": "database/password",
+				"reference": "op://vault/db/password"
+			}
+		]
+	}`
+
+	if err := os.WriteFile(configPath, []byte(configData), 0600); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if len(cfg.Secrets) != 2 {
+		t.Errorf("Expected 2 secrets, got %d", len(cfg.Secrets))
+	}
+
+	// Check first secret with ownership
+	sslSecret := cfg.Secrets[0]
+	if sslSecret.Owner != "caddy" {
+		t.Errorf("Expected owner caddy, got %s", sslSecret.Owner)
+	}
+	if sslSecret.Group != "caddy" {
+		t.Errorf("Expected group caddy, got %s", sslSecret.Group)
+	}
+	if sslSecret.Mode != "0644" {
+		t.Errorf("Expected mode 0644, got %s", sslSecret.Mode)
+	}
+
+	// Check second secret without ownership (should be empty)
+	dbSecret := cfg.Secrets[1]
+	if dbSecret.Owner != "" {
+		t.Errorf("Expected empty owner, got %s", dbSecret.Owner)
+	}
+	if dbSecret.Group != "" {
+		t.Errorf("Expected empty group, got %s", dbSecret.Group)
+	}
+	if dbSecret.Mode != "" {
+		t.Errorf("Expected empty mode, got %s", dbSecret.Mode)
+	}
+}
