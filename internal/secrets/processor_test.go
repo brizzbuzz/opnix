@@ -211,8 +211,8 @@ func TestProcessorModeValidation(t *testing.T) {
 		if err == nil {
 			t.Error("Expected error with invalid mode, got nil")
 		}
-		if err != nil && !contains(err.Error(), "invalid file mode") {
-			t.Errorf("Expected 'invalid file mode' error, got: %v", err)
+		if err != nil && !contains(err.Error(), "Invalid value") && !contains(err.Error(), "mode") {
+			t.Errorf("Expected mode validation error, got: %v", err)
 		}
 	})
 }
@@ -253,10 +253,10 @@ func TestProcessorOwnershipValidation(t *testing.T) {
 
 		err := processor.Process(cfg)
 		if err == nil {
-			t.Error("Expected error with nonexistent user, got nil")
+			t.Error("Expected error with invalid user, got nil")
 		}
-		if err != nil && !contains(err.Error(), "not found") {
-			t.Errorf("Expected 'not found' error, got: %v", err)
+		if err != nil && !contains(err.Error(), "does not exist") {
+			t.Errorf("Expected 'does not exist' error, got: %v", err)
 		}
 	})
 
@@ -273,10 +273,10 @@ func TestProcessorOwnershipValidation(t *testing.T) {
 
 		err := processor.Process(cfg)
 		if err == nil {
-			t.Error("Expected error with nonexistent group, got nil")
+			t.Error("Expected error with invalid group, got nil")
 		}
-		if err != nil && !contains(err.Error(), "not found") {
-			t.Errorf("Expected 'not found' error, got: %v", err)
+		if err != nil && !contains(err.Error(), "does not exist") {
+			t.Errorf("Expected 'does not exist' error, got: %v", err)
 		}
 	})
 

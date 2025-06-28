@@ -187,16 +187,16 @@ func TestSecretOwnership(t *testing.T) {
 		secret := Secret{
 			Path:      "ssl/cert",
 			Reference: "op://vault/ssl/cert",
-			Owner:     "caddy",
-			Group:     "caddy",
+			Owner:     "root",
+			Group:     "root",
 			Mode:      "0644",
 		}
 
-		if secret.Owner != "caddy" {
-			t.Errorf("Expected owner caddy, got %s", secret.Owner)
+		if secret.Owner != "root" {
+			t.Errorf("Expected owner root, got %s", secret.Owner)
 		}
-		if secret.Group != "caddy" {
-			t.Errorf("Expected group caddy, got %s", secret.Group)
+		if secret.Group != "root" {
+			t.Errorf("Expected group root, got %s", secret.Group)
 		}
 		if secret.Mode != "0644" {
 			t.Errorf("Expected mode 0644, got %s", secret.Mode)
@@ -235,8 +235,8 @@ func TestLoadWithOwnership(t *testing.T) {
 			{
 				"path": "ssl/cert",
 				"reference": "op://vault/ssl/cert",
-				"owner": "caddy",
-				"group": "caddy",
+				"owner": "root",
+				"group": "root",
 				"mode": "0644"
 			},
 			{
@@ -261,11 +261,11 @@ func TestLoadWithOwnership(t *testing.T) {
 
 	// Check first secret with ownership
 	sslSecret := cfg.Secrets[0]
-	if sslSecret.Owner != "caddy" {
-		t.Errorf("Expected owner caddy, got %s", sslSecret.Owner)
+	if sslSecret.Owner != "root" {
+		t.Errorf("Expected owner root, got %s", sslSecret.Owner)
 	}
-	if sslSecret.Group != "caddy" {
-		t.Errorf("Expected group caddy, got %s", sslSecret.Group)
+	if sslSecret.Group != "root" {
+		t.Errorf("Expected group root, got %s", sslSecret.Group)
 	}
 	if sslSecret.Mode != "0644" {
 		t.Errorf("Expected mode 0644, got %s", sslSecret.Mode)
