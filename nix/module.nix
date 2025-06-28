@@ -1,6 +1,6 @@
 { config, lib, pkgs, ... }: let
   cfg = config.services.onepassword-secrets;
-  
+
   # Create a new pkgs instance with our overlay
   pkgsWithOverlay = import pkgs.path {
     inherit (pkgs) system;
@@ -49,7 +49,6 @@ in {
       default = [];
       description = "Users that should have access to the 1Password token through group membership";
       example = [ "alice" "bob" ];
-    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -61,9 +60,23 @@ in {
       ${user}.extraGroups = [ opnixGroup ];
     }) cfg.users);
 
-    system.activationScripts.onepassword-secrets = {
-      deps = [];
-      text = ''
+    # Create systemd service instead of activation script
+    systemd.services.opnix-secrets = {
+      description = "OpNix Secret Management";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ];
+      wants = [ "network.target" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        Restart = "on-failure";
+        RestartSec = 30;
+        User = "root";
+        Group = opnixGroup;
+      };
+
+      script = ''
         # Ensure output directory exists with correct permissions
         mkdir -p ${cfg.outputDir}
         chmod 750 ${cfg.outputDir}
@@ -75,20 +88,25 @@ in {
           chmod 640 ${cfg.tokenFile}
         fi
 
-        # Validate token file existence and permissions
+        # Handle missing token file gracefully - don't fail system boot
         if [ ! -f ${cfg.tokenFile} ]; then
-          echo "Error: Token file ${cfg.tokenFile} does not exist!" >&2
-          exit 1
+          echo "WARNING: Token file ${cfg.tokenFile} does not exist!" >&2
+          echo "INFO: Using existing secrets, skipping updates" >&2
+          echo "INFO: Run 'opnix token set' to configure the token" >&2
+          exit 0
         fi
 
+        # Validate token file permissions
         if [ ! -r ${cfg.tokenFile} ]; then
-          echo "Error: Token file ${cfg.tokenFile} is not readable!" >&2
+          echo "ERROR: Token file ${cfg.tokenFile} is not readable!" >&2
+          echo "INFO: Check file permissions or group membership" >&2
           exit 1
         fi
 
         # Validate token is not empty
         if [ ! -s ${cfg.tokenFile} ]; then
-          echo "Error: Token file is empty!" >&2
+          echo "ERROR: Token file is empty!" >&2
+          echo "INFO: Run 'opnix token set' to configure the token" >&2
           exit 1
         fi
 

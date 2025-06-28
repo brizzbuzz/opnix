@@ -1,5 +1,9 @@
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.services.onepassword-secrets;
 
   # Create a new pkgs instance with our overlay
@@ -7,15 +11,14 @@ let
     inherit (pkgs) system;
     overlays = [
       (final: prev: {
-        opnix = import ./package.nix { pkgs = final; };
+        opnix = import ./package.nix {pkgs = final;};
       })
     ];
   };
 
   # Create a system group for opnix token access
   opnixGroup = "onepassword-secrets";
-in
-{
+in {
   options.services.onepassword-secrets = {
     enable = lib.mkEnableOption "1Password secrets integration";
 
@@ -48,9 +51,9 @@ in
     # New option for users that should have access to the token
     users = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ ];
+      default = [];
       description = "Users that should have access to the 1Password token through group membership";
-      example = [ "alice" "bob" ];
+      example = ["alice" "bob"];
     };
 
     # nix-darwin will not assign a default gid
@@ -64,7 +67,7 @@ in
 
   config = lib.mkIf (cfg.enable) {
     # Let nix-darwin know it's allowed to mess with this group
-    users.knownGroups = [ opnixGroup ];
+    users.knownGroups = [opnixGroup];
 
     # Create the opnix group
     users.groups.${opnixGroup} = {
@@ -84,45 +87,70 @@ in
       })
       cfg.users);
 
+    # Create launchd service for macOS
+    launchd.daemons.opnix-secrets = {
+      serviceConfig = {
+        Label = "org.nixos.opnix-secrets";
+        ProgramArguments = [
+          "/bin/sh"
+          "-c"
+          ''
+            # Ensure output directory exists with correct permissions
+            mkdir -p ${cfg.outputDir}
+            chmod 750 ${cfg.outputDir}
+
+            # Set up token file with correct group permissions if it exists
+            if [ -f ${cfg.tokenFile} ]; then
+              # Ensure token file has correct ownership and permissions
+              chown root:${opnixGroup} ${cfg.tokenFile}
+              chmod 640 ${cfg.tokenFile}
+            fi
+
+            # Handle missing token file gracefully - don't fail system boot
+            if [ ! -f ${cfg.tokenFile} ]; then
+              echo "WARNING: Token file ${cfg.tokenFile} does not exist!" >&2
+              echo "INFO: Using existing secrets, skipping updates" >&2
+              echo "INFO: Run 'opnix token set' to configure the token" >&2
+              exit 0
+            fi
+
+            # Validate token file permissions
+            if [ ! -r ${cfg.tokenFile} ]; then
+              echo "ERROR: Token file ${cfg.tokenFile} is not readable!" >&2
+              echo "INFO: Check file permissions or group membership" >&2
+              exit 1
+            fi
+
+            # Validate token is not empty
+            if [ ! -s ${cfg.tokenFile} ]; then
+              echo "ERROR: Token file is empty!" >&2
+              echo "INFO: Run 'opnix token set' to configure the token" >&2
+              exit 1
+            fi
+
+            # Run the secrets retrieval tool
+            ${pkgsWithOverlay.opnix}/bin/opnix secret \
+              -token-file ${cfg.tokenFile} \
+              -config ${cfg.configFile} \
+              -output ${cfg.outputDir}
+          ''
+        ];
+        RunAtLoad = true;
+        KeepAlive = {
+          SuccessfulExit = false;
+        };
+        StandardErrorPath = "/var/log/opnix-secrets.log";
+        StandardOutPath = "/var/log/opnix-secrets.log";
+      };
+    };
 
     # nix-darwin doesn't support arbitrary activation script names,
     # so have to use a specific one.
     #
-    # See source for details: https://github.com/nix-darwin/nix-darwin/blob/2f140d6ac8840c6089163fb43ba95220c230f22b/modules/system/activation-scripts.nix#L118 
+    # See source for details: https://github.com/nix-darwin/nix-darwin/blob/2f140d6ac8840c6089163fb43ba95220c230f22b/modules/system/activation-scripts.nix#L118
     system.activationScripts.extraActivation.text = ''
-      # Ensure output directory exists with correct permissions
-      mkdir -p ${cfg.outputDir}
-      chmod 750 ${cfg.outputDir}
-
-      # Set up token file with correct group permissions if it exists
-      if [ -f ${cfg.tokenFile} ]; then
-        # Ensure token file has correct ownership and permissions
-        chown root:${opnixGroup} ${cfg.tokenFile}
-        chmod 640 ${cfg.tokenFile}
-      fi
-
-      # Validate token file existence and permissions
-      if [ ! -f ${cfg.tokenFile} ]; then
-        echo "Error: Token file ${cfg.tokenFile} does not exist!" >&2
-        exit 1
-      fi
-
-      if [ ! -r ${cfg.tokenFile} ]; then
-        echo "Error: Token file ${cfg.tokenFile} is not readable!" >&2
-        exit 1
-      fi
-
-      # Validate token is not empty
-      if [ ! -s ${cfg.tokenFile} ]; then
-        echo "Error: Token file is empty!" >&2
-        exit 1
-      fi
-
-      # Run the secrets retrieval tool
-      ${pkgsWithOverlay.opnix}/bin/opnix secret \
-        -token-file ${cfg.tokenFile} \
-        -config ${cfg.configFile} \
-        -output ${cfg.outputDir}
+      # OpNix secrets are now managed by launchd service instead of activation script
+      echo "INFO: OpNix secrets managed by launchd service"
     '';
   };
 }
