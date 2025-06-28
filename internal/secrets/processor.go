@@ -11,7 +11,6 @@ import (
 
 	"github.com/brizzbuzz/opnix/internal/config"
 	"github.com/brizzbuzz/opnix/internal/errors"
-	"github.com/brizzbuzz/opnix/internal/systemd"
 )
 
 type SecretClient interface {
@@ -23,7 +22,6 @@ type Processor struct {
 	outputDir    string
 	pathTemplate string
 	defaults     map[string]string
-	systemdMgr   *systemd.Manager
 }
 
 func NewProcessor(client SecretClient, outputDir string) *Processor {
@@ -42,26 +40,6 @@ func NewProcessorWithConfig(client SecretClient, outputDir, pathTemplate string,
 	}
 }
 
-func NewProcessorWithSystemd(client SecretClient, outputDir, pathTemplate string, defaults map[string]string, systemdCfg config.SystemdIntegration) (*Processor, error) {
-	var systemdMgr *systemd.Manager
-	var err error
-
-	if systemdCfg.Enable {
-		systemdMgr, err = systemd.NewManager(systemdCfg)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return &Processor{
-		client:       client,
-		outputDir:    outputDir,
-		pathTemplate: pathTemplate,
-		defaults:     defaults,
-		systemdMgr:   systemdMgr,
-	}, nil
-}
-
 func (p *Processor) Process(cfg *config.Config) error {
 	// Update processor with config-level settings
 	if cfg.PathTemplate != "" {
@@ -69,15 +47,6 @@ func (p *Processor) Process(cfg *config.Config) error {
 	}
 	if len(cfg.Defaults) > 0 {
 		p.defaults = cfg.Defaults
-	}
-
-	// Initialize systemd manager if configuration is provided
-	if cfg.SystemdIntegration.Enable && p.systemdMgr == nil {
-		var err error
-		p.systemdMgr, err = systemd.NewManager(cfg.SystemdIntegration)
-		if err != nil {
-			return err
-		}
 	}
 
 	if err := os.MkdirAll(p.outputDir, 0755); err != nil {
@@ -89,8 +58,6 @@ func (p *Processor) Process(cfg *config.Config) error {
 		)
 	}
 
-	// Process all secrets first
-	secretPaths := make(map[string]string)
 	for i, secret := range cfg.Secrets {
 		secretName := fmt.Sprintf("secret[%d]:%s", i, secret.Path)
 		if err := p.processSecret(secret, secretName); err != nil {
@@ -102,27 +69,6 @@ func (p *Processor) Process(cfg *config.Config) error {
 					"Check the secret configuration for errors",
 					"Verify 1Password reference is correct",
 					"Ensure target directory permissions are correct",
-				},
-			)
-		}
-
-		// Store the resolved path for systemd integration
-		if resolvedPath, err := p.resolveSecretPathWithTemplate(secret, secretName); err == nil {
-			secretPaths[secretName] = resolvedPath
-		}
-	}
-
-	// Handle systemd service integration after all secrets are processed
-	if p.systemdMgr != nil {
-		if err := p.systemdMgr.ProcessSecretChanges(cfg.Secrets, secretPaths); err != nil {
-			return errors.WrapWithSuggestions(
-				err,
-				"Processing systemd service changes",
-				"systemd integration",
-				[]string{
-					"Check that systemd services are properly configured",
-					"Verify service names are correct",
-					"Ensure OpNix has permissions to manage services",
 				},
 			)
 		}

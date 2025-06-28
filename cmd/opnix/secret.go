@@ -71,26 +71,8 @@ func (s *secretCommand) Run() error {
 
 	log.Printf("Initialized 1Password client successfully")
 
-	// Process secrets with detailed progress and systemd integration
-	var processor *secrets.Processor
-	if cfg.SystemdIntegration.Enable {
-		processor, err = secrets.NewProcessorWithSystemd(client, s.outputDir, cfg.PathTemplate, cfg.Defaults, cfg.SystemdIntegration)
-		if err != nil {
-			return errors.WrapWithSuggestions(
-				err,
-				"Initializing systemd integration",
-				"systemd manager",
-				[]string{
-					"Ensure systemd is available on this system",
-					"Check that systemctl is in PATH",
-					"Verify systemd integration is properly configured",
-				},
-			)
-		}
-	} else {
-		processor = secrets.NewProcessorWithConfig(client, s.outputDir, cfg.PathTemplate, cfg.Defaults)
-	}
-
+	// Process secrets with detailed progress
+	processor := secrets.NewProcessor(client, s.outputDir)
 	if err := processor.Process(cfg); err != nil {
 		// Error already has context from processor.Process
 		return err

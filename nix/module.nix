@@ -111,43 +111,6 @@ in {
             description = "File permissions in octal notation";
             example = "0644";
           };
-
-          services = lib.mkOption {
-            type =
-              lib.types.either
-              (lib.types.listOf lib.types.str)
-              (lib.types.attrsOf (lib.types.submodule {
-                options = {
-                  restart = lib.mkOption {
-                    type = lib.types.bool;
-                    default = true;
-                    description = "Whether to restart the service when this secret changes";
-                  };
-
-                  signal = lib.mkOption {
-                    type = lib.types.nullOr lib.types.str;
-                    default = null;
-                    description = "Custom signal to send instead of restart (e.g., SIGHUP for reload)";
-                    example = "SIGHUP";
-                  };
-
-                  after = lib.mkOption {
-                    type = lib.types.listOf lib.types.str;
-                    default = ["opnix-secrets.service"];
-                    description = "Additional systemd dependencies for this service";
-                  };
-                };
-              }));
-            default = [];
-            description = ''
-              Services to manage when this secret changes.
-              Can be a simple list of service names or an attribute set with advanced options.
-            '';
-            example = [
-              "caddy"
-              "postgresql"
-            ];
-          };
         };
       });
       default = {};
@@ -158,7 +121,6 @@ in {
       example = {
         "database/password" = {
           reference = "op://Vault/Database/password";
-          services = ["postgresql"];
         };
         "ssl/cert" = {
           reference = "op://Vault/SSL/certificate";
@@ -167,12 +129,6 @@ in {
           group = "caddy";
           mode = "0644";
           symlinks = ["/etc/ssl/certs/legacy.pem"];
-          services = {
-            caddy = {
-              restart = true;
-              after = ["opnix-secrets.service"];
-            };
-          };
         };
         "service/config" = {
           reference = "op://Vault/Service/config";
@@ -203,79 +159,6 @@ in {
         service = "default";
       };
     };
-
-    systemdIntegration = lib.mkOption {
-      type = lib.types.submodule {
-        options = {
-          enable = lib.mkOption {
-            type = lib.types.bool;
-            default = true;
-            description = "Enable systemd service integration and dependency management";
-          };
-
-          services = lib.mkOption {
-            type = lib.types.listOf lib.types.str;
-            default = [];
-            description = "Global list of services that should depend on opnix-secrets.service";
-            example = ["caddy" "postgresql" "grafana"];
-          };
-
-          restartOnChange = lib.mkOption {
-            type = lib.types.bool;
-            default = true;
-            description = "Whether to restart services when their secrets change";
-          };
-
-          changeDetection = lib.mkOption {
-            type = lib.types.submodule {
-              options = {
-                enable = lib.mkOption {
-                  type = lib.types.bool;
-                  default = true;
-                  description = "Enable content-based change detection to avoid unnecessary service restarts";
-                };
-
-                hashFile = lib.mkOption {
-                  type = lib.types.str;
-                  default = "/var/lib/opnix/secret-hashes.json";
-                  description = "File to store secret content hashes for change detection";
-                };
-              };
-            };
-            default = {};
-            description = "Change detection configuration";
-          };
-
-          errorHandling = lib.mkOption {
-            type = lib.types.submodule {
-              options = {
-                rollbackOnFailure = lib.mkOption {
-                  type = lib.types.bool;
-                  default = false;
-                  description = "Rollback secrets to previous versions if service restart fails";
-                };
-
-                continueOnError = lib.mkOption {
-                  type = lib.types.bool;
-                  default = true;
-                  description = "Continue processing other secrets if one fails";
-                };
-
-                maxRetries = lib.mkOption {
-                  type = lib.types.int;
-                  default = 3;
-                  description = "Maximum number of retry attempts for failed operations";
-                };
-              };
-            };
-            default = {};
-            description = "Error handling and recovery configuration";
-          };
-        };
-      };
-      default = {};
-      description = "Systemd service integration configuration";
-    };
   };
 
   config = lib.mkIf cfg.enable (let
@@ -303,12 +186,10 @@ in {
               mode = secret.mode;
               symlinks = secret.symlinks;
               variables = secret.variables;
-              services = secret.services;
             })
             cfg.secrets;
           pathTemplate = cfg.pathTemplate;
           defaults = cfg.defaults;
-          systemdIntegration = cfg.systemdIntegration;
         })
       else null;
 
@@ -369,14 +250,6 @@ in {
             mkdir -p ${cfg.outputDir}
             chmod 750 ${cfg.outputDir}
 
-            # Create systemd integration directories if needed
-            ${lib.optionalString cfg.systemdIntegration.enable (
-              lib.optionalString cfg.systemdIntegration.changeDetection.enable ''
-                mkdir -p $(dirname ${cfg.systemdIntegration.changeDetection.hashFile})
-                chmod 755 $(dirname ${cfg.systemdIntegration.changeDetection.hashFile})
-              ''
-            )}
-
             # Set up token file with correct group permissions if it exists
             if [ -f ${cfg.tokenFile} ]; then
               # Ensure token file has correct ownership and permissions
@@ -415,10 +288,6 @@ in {
                   -output ${cfg.outputDir}
               '')
               allConfigFiles}
-
-            ${lib.optionalString cfg.systemdIntegration.enable ''
-              echo "INFO: Systemd integration enabled - services will be managed automatically"
-            ''}
           '';
         };
 
@@ -432,74 +301,5 @@ in {
           )
           cfg.secrets;
       }
-
-      # Systemd service integration
-      (lib.mkIf cfg.systemdIntegration.enable {
-        # Collect all services that need dependency management
-        systemd.services = let
-          # Extract services from individual secrets
-          servicesFromSecrets = lib.flatten (lib.mapAttrsToList (
-              name: secret:
-                if lib.isList secret.services
-                then secret.services
-                else lib.attrNames secret.services
-            )
-            cfg.secrets);
-
-          # Combine with global services list
-          allServices = lib.unique (cfg.systemdIntegration.services ++ servicesFromSecrets);
-
-          # Generate service configurations
-          serviceConfigs = lib.listToAttrs (map (serviceName: {
-              name = serviceName;
-              value = {
-                after = ["opnix-secrets.service"];
-                wants = ["opnix-secrets.service"];
-              };
-            })
-            allServices);
-
-          # Add restart service if change detection is enabled
-          restartService = lib.optionalAttrs cfg.systemdIntegration.changeDetection.enable {
-            opnix-secrets-restart = {
-              description = "Restart services when OpNix secrets change";
-              serviceConfig = {
-                Type = "oneshot";
-                User = "root";
-              };
-
-              script = ''
-                echo "OpNix secrets changed, triggering service restart evaluation..."
-
-                # Re-run opnix to process changes and handle service restarts
-                # The change detection logic is handled in the Go code
-                ${lib.concatMapStringsSep "\n" (configFile: ''
-                    echo "Re-processing config file for service changes: ${configFile}"
-                    ${pkgsWithOverlay.opnix}/bin/opnix secret \
-                      -token-file ${cfg.tokenFile} \
-                      -config ${configFile} \
-                      -output ${cfg.outputDir} || true
-                  '')
-                  allConfigFiles}
-
-                echo "OpNix service restart evaluation completed"
-              '';
-            };
-          };
-        in
-          serviceConfigs // restartService;
-
-        # Create a systemd path unit for change detection if enabled
-        systemd.paths = lib.mkIf cfg.systemdIntegration.changeDetection.enable {
-          opnix-secrets-watcher = {
-            description = "Watch for OpNix secret changes";
-            wantedBy = ["multi-user.target"];
-            pathConfig = {
-              PathModified = cfg.outputDir;
-              Unit = "opnix-secrets-restart.service";
-            };
-          };
-        };
-      })
     ]);
 }

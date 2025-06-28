@@ -1,0 +1,52 @@
+{
+  "pathTemplate": "/etc/secrets/{service}/{environment}/{name}",
+  "defaults": {
+    "environment": "production",
+    "service": "default"
+  },
+  "secrets": [
+    {
+      "path": "database/password",
+      "reference": "op://Homelab/PostgreSQL/password",
+      "variables": {
+        "service": "postgresql",
+        "name": "password"
+      },
+      "owner": "postgres",
+      "group": "postgres",
+      "mode": "0600"
+    },
+    {
+      "path": "ssl/cert",
+      "reference": "op://Homelab/SSL/certificate",
+      "variables": {
+        "service": "caddy",
+        "name": "cert.pem"
+      },
+      "owner": "caddy",
+      "group": "caddy",
+      "mode": "0644"
+    },
+    {
+      "reference": "op://Homelab/Redis/password",
+      "variables": {
+        "service": "redis",
+        "name": "auth-token"
+      },
+      "owner": "redis",
+      "group": "redis",
+      "mode": "0600"
+    },
+    {
+      "path": "/etc/ssl/certs/cloudflare.pem",
+      "reference": "op://Homelab/Cloudflare/origin-cert",
+      "owner": "root",
+      "group": "ssl-cert",
+      "mode": "0644",
+      "symlinks": [
+        "/etc/caddy/ssl/cloudflare.pem",
+        "/opt/nginx/ssl/cloudflare.pem"
+      ]
+    }
+  ]
+}

@@ -158,10 +158,10 @@ Common issues and solutions:
 
 1. Token File Issues:
    ```
-   Error: Token file not found
-   ▪ Check if /etc/opnix-token exists
-   ▪ Verify file permissions
-   ▪ For Home Manager, ensure user in onepassword-secrets group
+   Warning: Token file not found
+   ▪ OpNix will continue with existing secrets
+   ▪ Run 'opnix token set' to configure the token
+   ▪ System boot will NOT be affected
    ```
 
 2. Authentication Problems:
@@ -169,6 +169,7 @@ Common issues and solutions:
    Error: Authentication failed
    ▪ Verify token validity
    ▪ Check service account permissions
+   ▪ Service will retry automatically
    ```
 
 3. Secret Access:
@@ -178,6 +179,13 @@ Common issues and solutions:
      ▪ Install 1password CLI and verify using op item get --format json
    ▪ Check service account vault access
    ```
+
+### System Reliability
+
+OpNix V1 uses systemd services (Linux) and launchd services (macOS) instead of activation scripts, ensuring:
+- **System boot reliability**: Missing tokens will NOT cause unbootable systems
+- **Automatic retry**: Services restart on failure and retry when tokens become available
+- **Graceful degradation**: Continues with existing secrets when tokens are unavailable
 
 ## Development
 
