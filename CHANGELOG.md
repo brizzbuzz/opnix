@@ -2,7 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.4.0] - 2025-05-06
+## [0.6.0] - 2025-06-28
+
+### 🚀 Features
+
+- Add darwin module
+
+### 🐛 Bug Fixes
+
+- Update package version and hash (#15)
+
+### ⚙️ Miscellaneous Tasks
+
+- Update 1password SDK (#14)
+
+## [0.5.0] - 2025-05-06
 
 ### 🚀 Features
 
@@ -14,6 +28,7 @@ All notable changes to this project will be documented in this file.
 - Changelog
 - Add license file
 - Add note on verifying secret references (#8)
+- Prep release
 
 ## [0.3.0] - 2024-11-30
 
