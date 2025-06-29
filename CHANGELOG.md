@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2025-06-29
+
+### 🚀 Features
+
+- Implement V1 configuration schema with declarative secrets and multi-file support
+- Implement flexible ownership and permissions for secrets
+- *(errors)* Implement comprehensive error handling and user experience improvements (MMI-83)
+- Implement custom path management with templates and symlinks
+- Implement systemd service integration and dependencies (MMI-81)
+
+### 🐛 Bug Fixes
+
+- Convert activation scripts to services to prevent unbootable systems
+
+### 📚 Documentation
+
+- Add comprehensive V1 documentation and migration guides (MMI-84)
+
 ## [0.6.0] - 2025-06-28
 
 ### 🚀 Features
@@ -11,6 +29,10 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - Update package version and hash (#15)
+
+### 📚 Documentation
+
+- Update changelog for 0.6.0 release (#17)
 
 ### ⚙️ Miscellaneous Tasks
 
