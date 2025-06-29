@@ -2,28 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.0.0] - 2025-06-29
-
-### 🚀 Features
-
-- Implement V1 configuration schema with declarative secrets and multi-file support
-- Implement flexible ownership and permissions for secrets
-- *(errors)* Implement comprehensive error handling and user experience improvements (MMI-83)
-- Implement custom path management with templates and symlinks
-- Implement systemd service integration and dependencies (MMI-81)
-- *(nix-modules)* Enforce camelCase variable names for declarative secrets
-
-### 🐛 Bug Fixes
-
-- Convert activation scripts to services to prevent unbootable systems
-- *(hm-module)* Ensure secretPaths option is always defined
-- *(nixos-module)* Ensure secretPaths option is always defined
-- 1Password section reference validation to support 4+ parts
-
-### 📚 Documentation
-
-- Add comprehensive V1 documentation and migration guides (MMI-84)
-
 ## [0.6.0] - 2025-06-28
 
 ### 🚀 Features
