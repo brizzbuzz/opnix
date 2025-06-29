@@ -80,14 +80,14 @@ services.onepassword-secrets = {
   tokenFile = "/etc/opnix-token";
   
   secrets = {
-    "database/password" = {
+    databasePassword = {
       reference = "op://Homelab/Database/password";
       owner = "postgres";
       group = "postgres";
       mode = "0600";
     };
     
-    "ssl/certificate" = {
+    sslCertificate = {
       reference = "op://Homelab/SSL/certificate";
       path = "/etc/ssl/certs/app.pem";
       owner = "caddy";
@@ -105,13 +105,13 @@ programs.onepassword-secrets = {
   tokenFile = "/etc/opnix-token";
   
   secrets = {
-    "ssh/private-key" = {
+    sshPrivateKey = {
       reference = "op://Personal/SSH/private-key";
       path = ".ssh/id_rsa";
       mode = "0600";
     };
     
-    "config/api-key" = {
+    configApiKey = {
       reference = "op://Work/API/key";
       path = ".config/myapp/api-key";
       mode = "0600";
@@ -128,11 +128,11 @@ Create a secrets configuration file:
 {
   "secrets": [
     {
-      "path": "database/password",
+      "path": "databasePassword",
       "reference": "op://Homelab/Database/password"
     },
     {
-      "path": "ssl/certificate",
+      "path": "sslCertificate", 
       "reference": "op://Homelab/SSL/certificate"
     }
   ]
@@ -232,7 +232,7 @@ ls -la ~/.config/myapp/
 
 ```nix
 services.onepassword-secrets.secrets = {
-  "ssl/cert" = {
+  sslCert = {
     reference = "op://Homelab/SSL/certificate";
     path = "/etc/ssl/certs/app.pem";
     owner = "caddy";
@@ -241,7 +241,7 @@ services.onepassword-secrets.secrets = {
     services = ["caddy"];
   };
   
-  "ssl/key" = {
+  sslKey = {
     reference = "op://Homelab/SSL/private-key";
     path = "/etc/ssl/private/app.key";
     owner = "caddy";
@@ -256,7 +256,7 @@ services.onepassword-secrets.secrets = {
 
 ```nix
 services.onepassword-secrets.secrets = {
-  "postgres/password" = {
+  postgresPassword = {
     reference = "op://Homelab/Database/password";
     owner = "postgres";
     group = "postgres";
@@ -269,7 +269,7 @@ services.postgresql = {
   enable = true;
   authentication = "local all all trust";
   initialScript = pkgs.writeText "init.sql" ''
-    ALTER USER postgres PASSWORD '$(cat ${config.services.onepassword-secrets.secretPaths."postgres/password"})';
+    ALTER USER postgres PASSWORD '$(cat ${config.services.onepassword-secrets.secretPaths.postgresPassword})';
   '';
 };
 ```
@@ -278,7 +278,7 @@ services.postgresql = {
 
 ```nix
 services.onepassword-secrets.secrets = {
-  "grafana/secret-key" = {
+  grafanaSecretKey = {
     reference = "op://Homelab/Grafana/secret-key";
     owner = "grafana";
     group = "grafana";
@@ -288,7 +288,7 @@ services.onepassword-secrets.secrets = {
 
 services.grafana = {
   enable = true;
-  settings.security.secret_key = "$__file{${config.services.onepassword-secrets.secretPaths."grafana/secret-key"}}";
+  settings.security.secret_key = "$__file{${config.services.onepassword-secrets.secretPaths.grafanaSecretKey}}";
 };
 ```
 
@@ -321,7 +321,7 @@ INFO: Token may be expired or invalid
 **Cannot write secret file:**
 ```
 ERROR: Cannot write secret file
-Secret: ssl/cert
+Secret: sslCert
 Target: /etc/ssl/certs/app.pem
 Issue: Permission denied
 ```
@@ -336,7 +336,7 @@ Issue: Permission denied
 **Secret not found:**
 ```
 ERROR: 1Password reference not found
-Secret: api/key
+Secret: apiKey
 Reference: op://Vault/Missing-Item/field
 Issue: Item 'Missing-Item' not found in vault 'Vault'
 ```

@@ -57,7 +57,7 @@ services.onepassword-secrets = {
   tokenFile = "/etc/opnix-token";
   
   secrets = {
-    "database/password" = {
+    databasePassword = {
       reference = "op://Homelab/Database/password";
       owner = "postgres";
       services = ["postgresql"];
@@ -106,7 +106,7 @@ sudo nixos-rebuild switch --flake .
 ### Web Services
 ```nix
 # SSL certificates for web servers
-services.onepassword-secrets.secrets."ssl/cert" = {
+services.onepassword-secrets.secrets.sslCert = {
   reference = "op://Homelab/SSL/certificate";
   path = "/etc/ssl/certs/app.pem";
   owner = "caddy";
@@ -117,7 +117,7 @@ services.onepassword-secrets.secrets."ssl/cert" = {
 ### Database Credentials
 ```nix
 # Database passwords with service integration
-services.onepassword-secrets.secrets."db/password" = {
+services.onepassword-secrets.secrets.dbPassword = {
   reference = "op://Homelab/Database/password";
   owner = "postgres";
   services = ["postgresql"];
@@ -127,7 +127,7 @@ services.onepassword-secrets.secrets."db/password" = {
 ### API Keys and Tokens
 ```nix
 # API keys for applications
-services.onepassword-secrets.secrets."api/key" = {
+services.onepassword-secrets.secrets.apiKey = {
   reference = "op://Homelab/API/key";
   owner = "myapp";
   mode = "0600";
@@ -137,7 +137,7 @@ services.onepassword-secrets.secrets."api/key" = {
 ### Home Manager Secrets
 ```nix
 # User SSH keys and development tokens
-programs.onepassword-secrets.secrets."ssh/key" = {
+programs.onepassword-secrets.secrets.sshKey = {
   reference = "op://Personal/SSH/private-key";
   path = ".ssh/id_rsa";
   mode = "0600";

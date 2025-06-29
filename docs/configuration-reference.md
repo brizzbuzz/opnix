@@ -68,6 +68,12 @@ services.onepassword-secrets = {
 - **Description**: Base directory where secrets are stored
 - **Notes**: Used as fallback when secrets don't specify custom paths
 
+#### `secretPaths`
+- **Type**: `attrsOf str`
+- **Default**: `{}`
+- **Description**: Computed paths for declarative secrets (automatically populated)
+- **Notes**: This option provides declarative references to secret file paths for use in other configuration sections
+
 #### `users` (NixOS only)
 - **Type**: `listOf str`
 - **Default**: `[]`
@@ -101,18 +107,18 @@ services.onepassword-secrets = {
 **Example:**
 ```nix
 services.onepassword-secrets.secrets = {
-  databasePassword = {
-    reference = "op://Homelab/Database/password";
-    owner = "postgres";
-    services = ["postgresql"];
+  example = {
+    databasePassword = {
+      reference = "op://Homelab/Database/password";
+      services = ["postgresql"];
+    };
+    sslCertificate = {
+      reference = "op://Homelab/SSL/certificate";
+      path = "/etc/ssl/certs/app.pem";
+      owner = "caddy";
+      mode = "0644";
+    };
   };
-  sslCertificate = {
-    reference = "op://Homelab/SSL/certificate";
-    path = "/etc/ssl/certs/app.pem";
-    owner = "caddy";
-    mode = "0644";
-  };
-};
 ```
 
 **Naming Rules:**
@@ -183,7 +189,7 @@ Each secret in the `secrets` attribute set supports these options:
 services = ["caddy" "postgresql"];
 ```
 
-**Advanced configuration example:**
+**Advanced configuration example (NixOS only):**
 ```nix
 services = {
   caddy = {
@@ -197,9 +203,15 @@ services = {
 };
 ```
 
+**Note**: nix-darwin only supports simple service lists (not advanced configuration):
+```nix
+# nix-darwin - simple list only
+services = ["com.example.myservice"];
+```
+
 ### Service Options
 
-When using advanced service configuration, each service supports:
+When using advanced service configuration (NixOS only), each service supports:
 
 #### `restart`
 - **Type**: `bool`
@@ -448,7 +460,7 @@ OpNix automatically generates path references that can be used in other parts of
 services.postgresql = {
   enable = true;
   initialScript = pkgs.writeText "init.sql" ''
-    ALTER USER postgres PASSWORD '$(cat ${config.services.onepassword-secrets.secretPaths."database/password"})';
+    ALTER USER postgres PASSWORD '$(cat ${config.services.onepassword-secrets.secretPaths.databasePassword})';
   '';
 };
 
@@ -456,8 +468,8 @@ services.caddy = {
   enable = true;
   virtualHosts."example.com" = {
     tls = {
-      cert = config.services.onepassword-secrets.secretPaths."ssl/cert";
-      key = config.services.onepassword-secrets.secretPaths."ssl/key";
+      cert = config.services.onepassword-secrets.secretPaths.sslCert;
+      key = config.services.onepassword-secrets.secretPaths.sslKey;
     };
   };
 };
@@ -471,7 +483,7 @@ programs.git = {
   enable = true;
   extraConfig = {
     user = {
-      signingkey = builtins.readFile config.programs.onepassword-secrets.secretPaths."git/signing-key";
+      signingkey = builtins.readFile config.programs.onepassword-secrets.secretPaths.gitSigningKey;
     };
   };
 };
@@ -483,6 +495,7 @@ OpNix can automatically manage systemd services when secrets change:
 
 ### Basic Service Integration
 
+**NixOS:**
 ```nix
 services.onepassword-secrets.secrets = {
   webSslCert = {
@@ -492,7 +505,17 @@ services.onepassword-secrets.secrets = {
 };
 ```
 
-### Advanced Service Integration
+**nix-darwin:**
+```nix
+services.onepassword-secrets.secrets = {
+  webSslCert = {
+    reference = "op://Homelab/SSL/certificate";
+    services = ["com.example.caddy"];  # macOS service identifiers
+  };
+};
+```
+
+### Advanced Service Integration (NixOS only)
 
 ```nix
 services.onepassword-secrets.secrets = {
@@ -511,6 +534,8 @@ services.onepassword-secrets.secrets = {
   };
 };
 ```
+
+**Note**: Advanced service configuration is only available on NixOS. nix-darwin uses simple service lists.
 
 ### Global Service Dependencies
 
@@ -545,7 +570,7 @@ services.onepassword-secrets = {
       variables = {
         service = "postgresql";
       };
-      # Results in: /etc/secrets/postgresql/prod/database-password
+      # Results in: /etc/secrets/postgresql/prod/databasePassword
     };
   };
 };

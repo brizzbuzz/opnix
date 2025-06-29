@@ -63,17 +63,17 @@ Fields:
     
     secrets = {
       # PostgreSQL superuser password
-      "postgres/superuser-password" = {
-        reference = "op://Homelab/PostgreSQL-Main-Database/password";
+      postgresSuperuserPassword = {
+        reference = "op://Homelab/PostgreSQL-Main/superuser-password";
         owner = "postgres";
         group = "postgres";
         mode = "0600";
         services = ["postgresql"];
       };
       
-      # Application user credentials
-      "postgres/app-user-password" = {
-        reference = "op://Homelab/PostgreSQL-App-User/password";
+      # Application user password
+      postgresAppUserPassword = {
+        reference = "op://Homelab/PostgreSQL-Main/app-user-password";
         owner = "postgres";
         group = "postgres";
         mode = "0600";
@@ -81,13 +81,13 @@ Fields:
       };
       
       # Database connection string for applications
-      "postgres/connection-string" = {
-        reference = "op://Homelab/PostgreSQL-Main-Database/connection-string";
-        path = "/run/secrets/database-url";
+      postgresConnectionString = {
+        reference = "op://Homelab/PostgreSQL-Main/connection-string";
+        path = "/etc/postgresql/connection-string";
         owner = "myapp";
         group = "myapp";
         mode = "0600";
-        services = ["myapp"];
+        services = ["postgresql"];
       };
     };
     
@@ -204,28 +204,28 @@ Fields:
     tokenFile = "/etc/opnix-token";
     
     secrets = {
-      # Database passwords
-      "postgres/superuser-password" = {
-        reference = "op://Homelab/PostgreSQL-Main-Database/password";
+      # PostgreSQL superuser password
+      postgresSuperuserPassword = {
+        reference = "op://Homelab/PostgreSQL-Main/superuser-password";
         owner = "postgres";
         group = "postgres";
         mode = "0600";
         services = ["postgresql"];
       };
       
-      # SSL Certificate
-      "postgres/ssl-cert" = {
-        reference = "op://Homelab/PostgreSQL-SSL-Certificate/server-cert";
+      # SSL certificate for PostgreSQL
+      postgresSslCert = {
+        reference = "op://Homelab/PostgreSQL-SSL/certificate";
         path = "/var/lib/postgresql/server.crt";
         owner = "postgres";
         group = "postgres";
-        mode = "0644";
+        mode = "0600";
         services = ["postgresql"];
       };
       
-      # SSL Private Key
-      "postgres/ssl-key" = {
-        reference = "op://Homelab/PostgreSQL-SSL-Certificate/server-key";
+      # SSL private key for PostgreSQL
+      postgresSslKey = {
+        reference = "op://Homelab/PostgreSQL-SSL/private-key";
         path = "/var/lib/postgresql/server.key";
         owner = "postgres";
         group = "postgres";
@@ -233,9 +233,9 @@ Fields:
         services = ["postgresql"];
       };
       
-      # CA Certificate
-      "postgres/ca-cert" = {
-        reference = "op://Homelab/PostgreSQL-SSL-Certificate/ca-cert";
+      # SSL CA certificate
+      postgresCaCert = {
+        reference = "op://Homelab/PostgreSQL-SSL/ca-certificate";
         path = "/var/lib/postgresql/ca.crt";
         owner = "postgres";
         group = "postgres";
@@ -428,28 +428,28 @@ in {
     tokenFile = "/etc/opnix-token";
     
     secrets = {
-      # Database credentials
-      "postgres/admin-password" = {
-        reference = "op://Homelab/PostgreSQL-Main/password";
+      # PostgreSQL admin password
+      postgresAdminPassword = {
+        reference = "op://Homelab/PostgreSQL-Admin/password";
         owner = "postgres";
         group = "postgres";
         mode = "0600";
         services = ["postgresql"];
       };
       
-      # Backup credentials
-      "postgres/backup-password" = {
-        reference = "op://Homelab/PostgreSQL-Backup-User/password";
+      # Backup user password
+      postgresBackupPassword = {
+        reference = "op://Homelab/PostgreSQL-Backup/password";
         owner = "postgres";
         group = "postgres";
         mode = "0600";
-        services = ["postgresql" "postgresql-backup"];
+        services = ["postgresql"];
       };
       
-      # Remote backup storage credentials
-      "backup/s3-credentials" = {
-        reference = "op://Homelab/S3-Backup/credentials";
-        path = "/run/secrets/s3-credentials";
+      # S3 credentials for backups
+      backupS3Credentials = {
+        reference = "op://Homelab/Backup-S3/credentials";
+        path = "/etc/postgresql/s3-credentials";
         owner = "postgres";
         group = "postgres";
         mode = "0600";

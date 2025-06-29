@@ -167,7 +167,6 @@ in {
     secretPaths = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = {};
-      readOnly = true;
       description = ''
         Computed paths for declarative secrets (GitHub #11).
         This is automatically populated and provides declarative references

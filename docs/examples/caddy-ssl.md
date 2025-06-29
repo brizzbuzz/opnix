@@ -52,7 +52,7 @@ Fields:
     
     secrets = {
       # SSL Certificate
-      "ssl/example-com-cert" = {
+      sslExampleComCert = {
         reference = "op://Homelab/SSL-Certificate-Example-Com/certificate";
         path = "/etc/ssl/certs/example.com.pem";
         owner = "caddy";
@@ -62,7 +62,7 @@ Fields:
       };
       
       # SSL Private Key
-      "ssl/example-com-key" = {
+      sslExampleComKey = {
         reference = "op://Homelab/SSL-Certificate-Example-Com/private-key";
         path = "/etc/ssl/private/example.com.key";
         owner = "caddy";
@@ -89,7 +89,7 @@ Fields:
     virtualHosts."example.com" = {
       extraConfig = ''
         # Use certificates managed by OpNix
-        tls ${config.services.onepassword-secrets.secretPaths."ssl/example-com-cert"} ${config.services.onepassword-secrets.secretPaths."ssl/example-com-key"}
+        tls ${config.services.onepassword-secrets.secretPaths.sslExampleComCert} ${config.services.onepassword-secrets.secretPaths.sslExampleComKey}
         
         # Your site configuration
         root * /var/www/example.com
@@ -150,7 +150,7 @@ Fields:
     
     secrets = {
       # Main site certificates
-      "example-com-cert" = {
+      exampleComCert = {
         reference = "op://Homelab/SSL-Example-Com/certificate";
         variables = { domain = "example.com"; };
         owner = "caddy";
@@ -159,7 +159,7 @@ Fields:
         services = ["caddy"];
       };
       
-      "example-com-key" = {
+      exampleComKey = {
         reference = "op://Homelab/SSL-Example-Com/private-key";
         variables = { domain = "example.com"; };
         owner = "caddy";
@@ -169,7 +169,7 @@ Fields:
       };
       
       # API subdomain certificates
-      "api-example-com-cert" = {
+      apiExampleComCert = {
         reference = "op://Homelab/SSL-API-Example-Com/certificate";
         variables = { domain = "api.example.com"; };
         owner = "caddy";
@@ -178,7 +178,7 @@ Fields:
         services = ["caddy"];
       };
       
-      "api-example-com-key" = {
+      apiExampleComKey = {
         reference = "op://Homelab/SSL-API-Example-Com/private-key";
         variables = { domain = "api.example.com"; };
         owner = "caddy";
@@ -188,7 +188,7 @@ Fields:
       };
       
       # Wildcard certificate (if available)
-      "wildcard-example-com-cert" = {
+      wildcardExampleComCert = {
         reference = "op://Homelab/SSL-Wildcard-Example-Com/certificate";
         path = "/etc/ssl/certs/wildcard.example.com.pem";
         owner = "caddy";
@@ -197,7 +197,7 @@ Fields:
         services = ["caddy"];
       };
       
-      "wildcard-example-com-key" = {
+      wildcardExampleComKey = {
         reference = "op://Homelab/SSL-Wildcard-Example-Com/private-key";
         path = "/etc/ssl/private/wildcard.example.com.key";
         owner = "caddy";
@@ -228,7 +228,7 @@ Fields:
     # Main website
     virtualHosts."example.com" = {
       extraConfig = ''
-        tls ${config.services.onepassword-secrets.secretPaths."example-com-cert"} ${config.services.onepassword-secrets.secretPaths."example-com-key"}
+        tls ${config.services.onepassword-secrets.secretPaths.exampleComCert} ${config.services.onepassword-secrets.secretPaths.exampleComKey}
         
         root * /var/www/example.com
         file_server
@@ -242,7 +242,7 @@ Fields:
     # API subdomain
     virtualHosts."api.example.com" = {
       extraConfig = ''
-        tls ${config.services.onepassword-secrets.secretPaths."api-example-com-cert"} ${config.services.onepassword-secrets.secretPaths."api-example-com-key"}
+        tls ${config.services.onepassword-secrets.secretPaths.apiExampleComCert} ${config.services.onepassword-secrets.secretPaths.apiExampleComKey}
         
         # Reverse proxy to local API service
         reverse_proxy localhost:8080
@@ -259,7 +259,7 @@ Fields:
     # Admin subdomain using wildcard certificate
     virtualHosts."admin.example.com" = {
       extraConfig = ''
-        tls ${config.services.onepassword-secrets.secretPaths."wildcard-example-com-cert"} ${config.services.onepassword-secrets.secretPaths."wildcard-example-com-key"}
+        tls ${config.services.onepassword-secrets.secretPaths.wildcardExampleComCert} ${config.services.onepassword-secrets.secretPaths.wildcardExampleComKey}
         
         # Basic authentication for admin area
         basicauth {
@@ -294,7 +294,7 @@ Fields:
     tokenFile = "/etc/opnix-token";
     
     secrets = {
-      "ssl/cert" = {
+      sslCert = {
         reference = "op://Homelab/SSL-Cert/certificate";
         path = "/etc/ssl/certs/app.pem";
         owner = "caddy";
@@ -313,7 +313,7 @@ Fields:
         };
       };
       
-      "ssl/key" = {
+      sslKey = {
         reference = "op://Homelab/SSL-Cert/private-key";
         path = "/etc/ssl/private/app.key";
         owner = "caddy";
@@ -328,7 +328,7 @@ Fields:
     enable = true;
     virtualHosts."example.com" = {
       extraConfig = ''
-        tls ${config.services.onepassword-secrets.secretPaths."ssl/cert"} ${config.services.onepassword-secrets.secretPaths."ssl/key"}
+        tls ${config.services.onepassword-secrets.secretPaths.sslCert} ${config.services.onepassword-secrets.secretPaths.sslKey}
         root * /var/www
         file_server
       '';
@@ -343,7 +343,7 @@ Fields:
       ExecStart = pkgs.writeScript "cert-monitor" ''
         #!/bin/bash
         
-        CERT_FILE="${config.services.onepassword-secrets.secretPaths."ssl/cert"}"
+        CERT_FILE="${config.services.onepassword-secrets.secretPaths.sslCert}"
         WARN_DAYS=30
         
         while true; do
@@ -470,7 +470,7 @@ sudo journalctl -u opnix-secrets.service -u caddy.service -f
 **Solutions**:
 1. Enable service integration:
    ```nix
-   services.onepassword-secrets.secrets."ssl/cert" = {
+   services.onepassword-secrets.secrets.sslCert = {
      services = ["caddy"];  # This should restart Caddy
    };
    ```
@@ -498,7 +498,7 @@ sudo journalctl -u opnix-secrets.service -u caddy.service -f
 2. Concatenate certificate with CA bundle:
    ```nix
    # Store full chain in 1Password and reference it
-   services.onepassword-secrets.secrets."ssl/fullchain" = {
+   services.onepassword-secrets.secrets.sslFullchain = {
      reference = "op://Homelab/SSL-Cert/fullchain";
      path = "/etc/ssl/certs/example.com-fullchain.pem";
    };

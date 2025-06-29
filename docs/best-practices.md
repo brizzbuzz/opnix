@@ -15,10 +15,10 @@ This guide covers security, performance, and operational best practices for usin
 ```nix
 # Good: Separate vaults for different purposes
 secrets = {
-  "database/password" = {
+  databasePassword = {
     reference = "op://Database-Prod/PostgreSQL/password";
   };
-  "ssl/cert" = {
+  sslCert = {
     reference = "op://SSL-Certificates/Web-Server/certificate";
   };
 };
@@ -75,7 +75,7 @@ services.onepassword-secrets = {
 ```nix
 # Default to most restrictive permissions
 secrets = {
-  "database/password" = {
+  databasePassword = {
     reference = "op://Vault/DB/password";
     mode = "0600";  # Owner read/write only
     owner = "postgres";
@@ -83,9 +83,9 @@ secrets = {
   };
   
   # Only use broader permissions when necessary
-  "ssl/certificate" = {
+  sslCertificate = {
     reference = "op://Vault/SSL/cert";
-    mode = "0644";  # World-readable for web servers
+    mode = "0644";  # Readable by service group
     owner = "caddy";
     group = "caddy";
   };
@@ -104,7 +104,7 @@ users.users.app-service = {
 users.groups.app-service = {};
 
 # Use dedicated user for secrets
-services.onepassword-secrets.secrets."app/config" = {
+services.onepassword-secrets.secrets.appConfig = {
   reference = "op://Vault/App/config";
   owner = "app-service";
   group = "app-service";
@@ -116,7 +116,7 @@ services.onepassword-secrets.secrets."app/config" = {
 ```nix
 # Good: Use system directories with proper permissions
 secrets = {
-  "ssl/cert" = {
+  sslCert = {
     reference = "op://Vault/SSL/cert";
     path = "/etc/ssl/certs/app.pem";  # Standard system location
   };
@@ -159,10 +159,10 @@ configFiles = [
 ```nix
 # Good: Use declarative configuration
 secrets = {
-  "app/database-url" = {
+  appDatabaseUrl = {
     reference = "op://Vault/App/database-url";
   };
-  "app/api-key" = {
+  appApiKey = {
     reference = "op://Vault/App/api-key";
   };
 };
@@ -250,7 +250,7 @@ secrets/
 ```nix
 # Document your secrets configuration
 services.onepassword-secrets.secrets = {
-  "database/password" = {
+  databasePassword = {
     reference = "op://Homelab/PostgreSQL-Main/password";
     # Used by: postgresql.service, backup-service
     # Rotation: Monthly via automation
@@ -377,7 +377,7 @@ services.onepassword-secrets = {
   
   secrets = lib.mkIf config.environment.isDevelopment {
     # Development secrets with fake/test data
-    "database/password" = {
+    databasePassword = {
       reference = "op://Dev-Vault/Test-DB/password";
     };
   };
@@ -553,7 +553,7 @@ services.onepassword-secrets = {
   
   # New declarative format
   secrets = {
-    "database/password" = {
+    databasePassword = {
       reference = "op://Vault/DB/password";
       owner = "postgres";
       services = ["postgresql"];

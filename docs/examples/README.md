@@ -51,7 +51,7 @@ This directory contains real-world configuration examples for common OpNix use c
 #### Basic Secret Declaration
 ```nix
 services.onepassword-secrets.secrets = {
-  "service/credential" = {
+  serviceCredential = {
     reference = "op://Vault/Item/field";
     owner = "service-user";
     group = "service-group";
@@ -59,12 +59,11 @@ services.onepassword-secrets.secrets = {
     services = ["service-name"];
   };
   
-  "ssl/certificate" = {
+  sslCertificate = {
     reference = "op://Homelab/SSL Certificates/example.com/cert";
     owner = "caddy";
     group = "caddy";
     mode = "0644";
-    services = ["caddy"];
   };
 };
 ```
@@ -72,7 +71,7 @@ services.onepassword-secrets.secrets = {
 #### Custom Path with Service Integration
 ```nix
 services.onepassword-secrets.secrets = {
-  "ssl/certificate" = {
+  sslCertificate = {
     reference = "op://Homelab/SSL/certificate";
     path = "/etc/ssl/certs/app.pem";
     owner = "caddy";
@@ -91,7 +90,7 @@ services.onepassword-secrets.secrets = {
 #### Home Manager User Secrets
 ```nix
 programs.onepassword-secrets.secrets = {
-  "ssh/private-key" = {
+  sshPrivateKey = {
     reference = "op://Personal/SSH/private-key";
     path = ".ssh/id_rsa";
     mode = "0600";
@@ -106,7 +105,7 @@ programs.onepassword-secrets.secrets = {
 {
   "secrets": [
     {
-      "path": "database/password",
+      "path": "databasePassword",
       "reference": "op://Homelab/Database/password"
     }
   ]

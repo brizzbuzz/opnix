@@ -217,7 +217,7 @@ sudo -u caddy cat /var/lib/opnix/secrets/ssl/cert.pem
 
 1. **Fix secret ownership:**
    ```nix
-   services.onepassword-secrets.secrets."ssl/cert" = {
+   services.onepassword-secrets.secrets.sslCert = {
      reference = "op://Vault/SSL/cert";
      owner = "caddy";
      group = "caddy";
@@ -227,7 +227,7 @@ sudo -u caddy cat /var/lib/opnix/secrets/ssl/cert.pem
 
 2. **Use group access:**
    ```nix
-   services.onepassword-secrets.secrets."ssl/cert" = {
+   services.onepassword-secrets.secrets.sslCert = {
      reference = "op://Vault/SSL/cert";
      owner = "root";
      group = "ssl-cert";
@@ -311,7 +311,7 @@ Services continue using old secrets after OpNix updates them.
 
 1. **Enable restart on change:**
    ```nix
-   services.onepassword-secrets.secrets."ssl/cert" = {
+   services.onepassword-secrets.secrets.sslCert = {
      reference = "op://Vault/SSL/cert";
      services = ["caddy"];  # Will restart caddy when cert changes
    };
@@ -319,7 +319,7 @@ Services continue using old secrets after OpNix updates them.
 
 2. **Advanced service control:**
    ```nix
-   services.onepassword-secrets.secrets."config/file" = {
+   services.onepassword-secrets.secrets.configFile = {
      reference = "op://Vault/Config/file";
      services = {
        myservice = {
@@ -520,7 +520,7 @@ Issue: User 'nonexistent-user' does not exist
 
 2. **Fix configuration:**
    ```nix
-   services.onepassword-secrets.secrets."database/password" = {
+   services.onepassword-secrets.secrets.databasePassword = {
      reference = "op://Vault/DB/password";
      owner = "postgres";  # Use existing user
      group = "postgres";
@@ -548,11 +548,11 @@ Secrets: ssl/cert, ssl/certificate
 1. **Use different paths:**
    ```nix
    services.onepassword-secrets.secrets = {
-     "ssl/cert" = {
+     sslCert = {
        reference = "op://Vault/SSL/cert";
        path = "/etc/ssl/certs/app-cert.pem";
      };
-     "ssl/certificate" = {
+     sslCertificate = {
        reference = "op://Vault/SSL/fullchain";
        path = "/etc/ssl/certs/app-fullchain.pem";
      };
@@ -561,7 +561,7 @@ Secrets: ssl/cert, ssl/certificate
 
 2. **Use symlinks:**
    ```nix
-   services.onepassword-secrets.secrets."ssl/cert" = {
+   services.onepassword-secrets.secrets.sslCert = {
      reference = "op://Vault/SSL/cert";
      path = "/etc/ssl/certs/app.pem";
      symlinks = [
@@ -675,7 +675,7 @@ Home Manager activation completes but secrets aren't in expected locations.
 
 2. **Verify configuration:**
    ```nix
-   programs.onepassword-secrets.secrets."ssh/key" = {
+   programs.onepassword-secrets.secrets.sshKey = {
      reference = "op://Personal/SSH/key";
      path = ".ssh/id_rsa";  # Relative to home directory
    };

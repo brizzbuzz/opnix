@@ -71,7 +71,7 @@ services.onepassword-secrets = {
   
   # Add new secrets declaratively
   secrets = {
-    "new-service/api-key" = {
+    newServiceApiKey = {
       reference = "op://Vault/New-Service/api-key";
       owner = "new-service";
       mode = "0600";
@@ -96,7 +96,7 @@ services.onepassword-secrets = {
   
   # All secrets defined declaratively
   secrets = {
-    "database/password" = {
+    databasePassword = {
       reference = "op://Homelab/PostgreSQL/password";
       owner = "postgres";
       group = "postgres";
@@ -104,7 +104,7 @@ services.onepassword-secrets = {
       services = ["postgresql"];
     };
     
-    "ssl/certificate" = {
+    sslCertificate = {
       reference = "op://Homelab/SSL/certificate";
       path = "/etc/ssl/certs/app.pem";
       owner = "caddy";
@@ -142,13 +142,13 @@ services.onepassword-secrets = {
 ### Before (V0 Style - No Longer Supported)
 ```nix
 services.onepassword-secrets.secrets = {
-  "database/password" = {
+  databasePassword = {
     reference = "op://Vault/Database/password";
   };
-  "ssl/cert" = {
+  sslCert = {
     reference = "op://Vault/SSL/certificate";
   };
-  "api-keys/github" = {
+  githubApiKey = {
     reference = "op://Personal/GitHub/token";
   };
 };
@@ -199,7 +199,7 @@ The file paths remain the same - only the variable names change:
 
 ```nix
 # Old format
-"ssl/cert" = {
+sslCert = {
   reference = "op://Vault/SSL/certificate";
   path = "/etc/ssl/certs/app.pem";  # Explicit path
 };
@@ -278,7 +278,7 @@ Implement your chosen migration strategy. Here are common patterns:
 {
   "secrets": [
     {
-      "path": "database/password",
+      "path": "databasePassword",
       "reference": "op://Homelab/Database/password"
     },
     {
@@ -292,7 +292,7 @@ Implement your chosen migration strategy. Here are common patterns:
 **After (V1 Declarative):**
 ```nix
 services.onepassword-secrets.secrets = {
-  "database/password" = {
+  databasePassword = {
     reference = "op://Homelab/Database/password";
     # Add ownership and permissions
     owner = "postgres";
@@ -301,7 +301,7 @@ services.onepassword-secrets.secrets = {
     services = ["postgresql"];
   };
   
-  "ssl/cert" = {
+  sslCert = {
     reference = "op://Homelab/SSL/certificate";
     # Use custom path
     path = "/etc/ssl/certs/app.pem";
@@ -408,7 +408,7 @@ programs.onepassword-secrets = {
   tokenFile = "/etc/opnix-token";  # Can use system token
   
   secrets = {
-    "ssh/private-key" = {
+    sshPrivateKey = {
       reference = "op://Personal/SSH/private-key";
       path = ".ssh/id_rsa";
       mode = "0600";
@@ -442,7 +442,7 @@ services.onepassword-secrets.systemdIntegration = {
 **V1 Solution:**
 ```nix
 services.onepassword-secrets.secrets = {
-  "database/password" = {
+  databasePassword = {
     reference = "op://Vault/DB/password";
     owner = "postgres";  # Service-specific ownership
     group = "postgres";
@@ -502,7 +502,7 @@ in {
     tokenFile = "/etc/opnix-${environment}-token";
     
     secrets = {
-      "database/password" = {
+      databasePassword = {
         reference = "op://Vault-${lib.toUpper environment}/Database/password";
         owner = "postgres";
         services = ["postgresql"];
@@ -560,7 +560,7 @@ programs.onepassword-secrets = {
   tokenFile = "/etc/opnix-token";  # Reuse system token
   
   secrets = {
-    "ssh/key" = {
+    sshKey = {
       reference = "op://Personal/SSH/key";
       path = ".ssh/id_rsa";
       mode = "0600";
