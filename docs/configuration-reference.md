@@ -114,8 +114,8 @@ Each secret in the `secrets` attribute set supports these options:
 
 #### `reference` (required)
 - **Type**: `str`
-- **Description**: 1Password reference in the format `op://Vault/Item/field`
-- **Example**: `"op://Homelab/Database/password"`
+- **Description**: 1Password reference in the format `op://Vault/Item/field` or `op://Vault/Item/Section/field`
+- **Example**: `"op://Homelab/Database/password"` or `"op://Homelab/SSL Certs/example.com/cert"`
 
 #### `path`
 - **Type**: `nullOr str`
@@ -385,6 +385,13 @@ When using `configFiles`, each JSON file should follow this structure:
       "owner": "user",
       "group": "group", 
       "mode": "0600"
+    },
+    {
+      "path": "ssl/certificate",
+      "reference": "op://Vault/SSL Certs/example.com/cert",
+      "owner": "caddy",
+      "group": "caddy",
+      "mode": "0644"
     }
   ]
 }
@@ -581,7 +588,7 @@ services.onepassword-secrets = {
 OpNix automatically validates your configuration and provides helpful error messages:
 
 - **File permissions**: Must be valid octal (e.g., "0644", "0600")
-- **1Password references**: Must follow `op://Vault/Item/field` format
+- **1Password references**: Must follow `op://Vault/Item/field` or `op://Vault/Item/Section/field` format
 - **Path conflicts**: Prevents multiple secrets with the same output path
 - **User/group existence**: Validates that specified users and groups exist
 - **Configuration completeness**: Ensures at least one of `configFiles` or `secrets` is specified

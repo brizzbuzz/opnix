@@ -82,6 +82,10 @@ Add OPNix to your NixOS configuration:
        {
          "path": "ssl/private-key",
          "reference": "op://vault/certificates/private-key"
+       },
+       {
+         "path": "ssl/cloudflare-cert",
+         "reference": "op://Homelab/SSL Certificates/example.com/cert"
        }
      ]
    }

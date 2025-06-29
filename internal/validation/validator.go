@@ -278,8 +278,9 @@ func (v *Validator) validateReference(reference, secretName string) error {
 			reference,
 			"Invalid 1Password reference format",
 			[]string{
-				"Use format: op://Vault/Item/field",
+				"Use format: op://Vault/Item/field or op://Vault/Item/Section/field",
 				"Example: op://Homelab/Database/password",
+				"Example with section: op://Homelab/Cloudflare/rgbr.ink/cert",
 				"Ensure vault, item, and field names don't contain forward slashes",
 				"Check the reference in 1Password web interface",
 			},
@@ -287,19 +288,21 @@ func (v *Validator) validateReference(reference, secretName string) error {
 	}
 
 	parts := strings.Split(strings.TrimPrefix(reference, "op://"), "/")
-	if len(parts) != 3 {
+	if len(parts) < 3 {
 		return errors.ConfigValidationError(
 			fmt.Sprintf("%s.reference", secretName),
 			reference,
-			"Reference must have exactly 3 parts: vault/item/field",
+			"Reference must have at least 3 parts: vault/item/field",
 			[]string{
 				"Verify the reference format: op://Vault/Item/field",
-				"Check for extra or missing forward slashes",
+				"Or with sections: op://Vault/Item/Section/field",
+				"Check for missing forward slashes",
 			},
 		)
 	}
 
-	vault, item, field := parts[0], parts[1], parts[2]
+	vault, item := parts[0], parts[1]
+	field := parts[len(parts)-1] // Field is always the last part
 
 	if vault == "" {
 		return errors.ConfigValidationError(

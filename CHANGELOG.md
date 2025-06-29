@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.7.0] - 2025-06-29
+## [1.0.0] - 2025-06-29
 
 ### 🚀 Features
 
@@ -15,6 +15,8 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - Convert activation scripts to services to prevent unbootable systems
+- *(hm-module)* Ensure secretPaths option is always defined
+- *(nixos-module)* Ensure secretPaths option is always defined
 
 ### 📚 Documentation
 

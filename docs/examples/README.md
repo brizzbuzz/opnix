@@ -58,6 +58,14 @@ services.onepassword-secrets.secrets = {
     mode = "0600";
     services = ["service-name"];
   };
+  
+  "ssl/certificate" = {
+    reference = "op://Homelab/SSL Certificates/example.com/cert";
+    owner = "caddy";
+    group = "caddy";
+    mode = "0644";
+    services = ["caddy"];
+  };
 };
 ```
 

@@ -104,13 +104,33 @@ func TestValidator_ValidateReference(t *testing.T) {
 			name:      "invalid format - too few parts",
 			reference: "op://Vault/Item",
 			wantError: true,
-			errorType: "exactly 3 parts",
+			errorType: "at least 3 parts",
 		},
 		{
-			name:      "invalid format - too many parts",
-			reference: "op://Vault/Item/field/extra",
+			name:      "valid format - with section",
+			reference: "op://Vault/Item/Section/field",
+			wantError: false,
+		},
+		{
+			name:      "valid format - with nested sections",
+			reference: "op://Homelab/Cloudflare Origin Certs/rgbr.ink/cert",
+			wantError: false,
+		},
+		{
+			name:      "valid format - deeply nested sections",
+			reference: "op://Work/API Keys/Production/GitHub/token",
+			wantError: false,
+		},
+		{
+			name:      "valid format - section with spaces",
+			reference: "op://Homelab/SSL Certificates/example.com/private key",
+			wantError: false,
+		},
+		{
+			name:      "empty field in sectioned reference",
+			reference: "op://Vault/Item/Section/",
 			wantError: true,
-			errorType: "exactly 3 parts",
+			errorType: "Field name cannot be empty",
 		},
 		{
 			name:      "empty vault",
