@@ -259,6 +259,41 @@ func Wrap(err error, operation, component string) error {
 	}
 }
 
+// ServiceError creates errors for systemd service operations
+func ServiceError(operation, serviceName, action string, cause error) *OpnixError {
+	suggestions := []string{}
+
+	// Add context-specific suggestions based on the action
+	if action == "restart" || action == "reload" {
+		suggestions = append(suggestions,
+			fmt.Sprintf("Check service status: systemctl status %s", serviceName),
+			fmt.Sprintf("Check service logs: journalctl -u %s -n 20", serviceName),
+			fmt.Sprintf("Verify service configuration is valid"),
+			fmt.Sprintf("Try manual restart: sudo systemctl restart %s", serviceName),
+		)
+	} else if action == "is-active" {
+		suggestions = append(suggestions,
+			fmt.Sprintf("Check if service exists: systemctl cat %s", serviceName),
+			fmt.Sprintf("Check service status: systemctl status %s", serviceName),
+			"List all services: systemctl list-units --type=service",
+		)
+	} else if action == "cat" {
+		suggestions = append(suggestions,
+			fmt.Sprintf("Check if service unit file exists: ls -la /etc/systemd/system/%s.service", serviceName),
+			fmt.Sprintf("Check if service is installed: systemctl list-unit-files | grep %s", serviceName),
+			"Reload systemd configuration: sudo systemctl daemon-reload",
+		)
+	}
+
+	return &OpnixError{
+		Operation:   operation,
+		Component:   "systemd service",
+		Issue:       fmt.Sprintf("Service operation '%s' failed for service '%s'", action, serviceName),
+		Suggestions: suggestions,
+		Cause:       cause,
+	}
+}
+
 // WrapWithSuggestions wraps an error and adds suggestions
 func WrapWithSuggestions(err error, operation, component string, suggestions []string) error {
 	if err == nil {

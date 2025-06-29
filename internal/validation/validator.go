@@ -28,6 +28,7 @@ type SecretData struct {
 	Mode         string
 	Symlinks     []string
 	Variables    map[string]string
+	Services     interface{} // Can be []string or map[string]ServiceConfig
 	PathTemplate string
 	Defaults     map[string]string
 }
