@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - *(errors)* Implement comprehensive error handling and user experience improvements (MMI-83)
 - Implement custom path management with templates and symlinks
 - Implement systemd service integration and dependencies (MMI-81)
+- *(nix-modules)* Enforce camelCase variable names for declarative secrets
 
 ### 🐛 Bug Fixes
 
