@@ -19,6 +19,13 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
+            sandbox = false
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up networking for Go modules
+        run: |
+          # Ensure we can reach Go module proxy
+          curl -f https://proxy.golang.org/ || echo "Go proxy check failed"
 
       - name: Run flake check
-        run: nix flake check
+        run: nix flake check --impure
