@@ -294,7 +294,6 @@ in {
     secretPaths = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = {};
-      readOnly = true;
       description = ''
         Computed paths for declarative secrets (GitHub #11).
         This is automatically populated and provides declarative references
@@ -304,20 +303,17 @@ in {
   };
 
   config = lib.mkMerge [
-    # Always define secretPaths to prevent evaluation errors (fixes MMI-88)
-    {
+    # Always define secretPaths to prevent evaluation errors (fixes MMI-88, MMI-92)
+    (lib.mkIf (cfg.enable && cfg.secrets != {}) {
       services.onepassword-secrets.secretPaths =
-        if cfg.enable && cfg.secrets != {}
-        then
-          lib.mapAttrs (
-            name: secret:
-              if secret.path != null
-              then secret.path
-              else "${cfg.outputDir}/${name}"
-          )
-          (validateSecretKeys cfg.secrets)
-        else {};
-    }
+        lib.mapAttrs (
+          name: secret:
+            if secret.path != null
+            then secret.path
+            else "${cfg.outputDir}/${name}"
+        )
+        (validateSecretKeys cfg.secrets);
+    })
 
     # Main configuration only when enabled
     (lib.mkIf cfg.enable (let
