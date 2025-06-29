@@ -119,6 +119,30 @@ in {
             description = "File permissions in octal notation";
             example = "0644";
           };
+
+          symlinks = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [];
+            description = "List of symlink paths that should point to this secret";
+            example = ["/etc/ssl/certs/legacy.pem" "/opt/service/ssl/cert.pem"];
+          };
+
+          variables = lib.mkOption {
+            type = lib.types.attrsOf lib.types.str;
+            default = {};
+            description = "Variables for path template substitution";
+            example = {
+              service = "postgresql";
+              environment = "prod";
+            };
+          };
+
+          services = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [];
+            description = "List of services to restart when this secret changes (macOS services)";
+            example = ["com.example.myservice"];
+          };
         };
       });
       default = {};
