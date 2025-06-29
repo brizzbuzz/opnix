@@ -45,7 +45,7 @@
       darwinModules.default = import ./nix/darwin-module.nix;
 
       # Add Home Manager module output
-      homeManagerModules.default = import ./nix/hm-module.nix;
+      homeModules.default = import ./nix/hm-module.nix;
 
       overlays.default = final: prev: {
         opnix = import ./nix/package.nix {pkgs = final;};

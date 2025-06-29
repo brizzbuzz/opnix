@@ -101,6 +101,21 @@ Add OPNix to your NixOS configuration:
        configFile = "/path/to/your/secrets.json";
        outputDir = "/var/lib/opnix/secrets";  # Optional, this is the default
 
+       # Or use declarative secrets with camelCase variable names
+       secrets = {
+         databasePassword = {
+           reference = "op://Vault/Database/password";
+           services = ["postgresql"];
+         };
+         sslCertificate = {
+           reference = "op://Vault/SSL/certificate";
+           path = "/etc/ssl/certs/app.pem";
+           owner = "caddy";
+           group = "caddy";
+           mode = "0644";
+         };
+       };
+
        # For darwin systems only:
        #
        # groupId = 600; 
@@ -117,17 +132,17 @@ Add OPNix to your NixOS configuration:
    {
      programs.onepassword-secrets = {
        enable = true;
-       secrets = [
-         {
+       secrets = {
+         sshPrivateKey = {
            # Paths are relative to home directory
            path = ".ssh/id_rsa";
-           reference = "op://Personal/ssh-key/private-key"
-         }
-         {
+           reference = "op://Personal/ssh-key/private-key";
+         };
+         secretAppToken = {
            path = ".config/secret-app/token";
-           reference = "op://Work/api/token"
-         }
-       ];
+           reference = "op://Work/api/token";
+         };
+       };
      };
    }
    ```

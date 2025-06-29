@@ -134,7 +134,7 @@ func (s *secretCommand) checkOutputDirectory() error {
 	}
 
 	// Clean up test file
-	os.Remove(testFile)
+	_ = os.Remove(testFile) // Ignore error - cleanup is best effort
 
 	return nil
 }

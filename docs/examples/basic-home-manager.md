@@ -59,35 +59,35 @@ Fields:
     
     secrets = {
       # SSH private key
-      "ssh/id_rsa" = {
+      sshPrivateKey = {
         reference = "op://Personal/SSH-Key-Main/private-key";
         path = ".ssh/id_rsa";
         mode = "0600";
       };
       
       # SSH public key
-      "ssh/id_rsa_pub" = {
+      sshPublicKey = {
         reference = "op://Personal/SSH-Key-Main/public-key";
         path = ".ssh/id_rsa.pub";
         mode = "0644";
       };
       
       # GitHub API token
-      "tokens/github" = {
+      githubToken = {
         reference = "op://Personal/Development-API-Keys/github-token";
         path = ".config/gh/token";
         mode = "0600";
       };
       
       # GPG private key
-      "gpg/private-key" = {
+      gpgPrivateKey = {
         reference = "op://Personal/Development-Config/gpg-key";
         path = ".gnupg/private-key.asc";
         mode = "0600";
       };
       
       # NPM configuration
-      "npm/npmrc" = {
+      npmConfig = {
         reference = "op://Personal/Development-Config/npmrc";
         path = ".npmrc";
         mode = "0600";
@@ -162,7 +162,7 @@ If you prefer to use a user-specific token instead of the system token:
     tokenFile = "${config.home.homeDirectory}/.config/opnix/token";
     
     secrets = {
-      "ssh/id_rsa" = {
+      sshPrivateKey = {
         reference = "op://Personal/SSH-Key-Main/private-key";
         path = ".ssh/id_rsa";
         mode = "0600";
@@ -189,59 +189,59 @@ If you prefer to use a user-specific token instead of the system token:
     
     secrets = {
       # Development SSH keys
-      "ssh/id_rsa" = {
+      sshPrivateKey = {
         reference = "op://Personal/SSH-Key-Main/private-key";
         path = ".ssh/id_rsa";
         mode = "0600";
       };
       
-      "ssh/id_ed25519" = {
+      sshEd25519Key = {
         reference = "op://Personal/SSH-Key-Ed25519/private-key";
         path = ".ssh/id_ed25519";
         mode = "0600";
       };
       
       # API tokens
-      "tokens/github" = {
+      githubToken = {
         reference = "op://Personal/Development-API-Keys/github-token";
         path = ".config/tokens/github";
         mode = "0600";
       };
       
-      "tokens/openai" = {
+      openaiApiKey = {
         reference = "op://Personal/Development-API-Keys/openai-api-key";
         path = ".config/tokens/openai";
         mode = "0600";
       };
       
-      "tokens/docker-hub" = {
+      dockerHubToken = {
         reference = "op://Personal/Development-API-Keys/docker-hub-token";
         path = ".config/tokens/docker-hub";
         mode = "0600";
       };
       
       # Configuration files
-      "config/npmrc" = {
+      npmConfig = {
         reference = "op://Personal/Development-Config/npmrc";
         path = ".npmrc";
         mode = "0600";
       };
       
-      "config/pypirc" = {
+      pypiConfig = {
         reference = "op://Personal/Development-Config/pypirc";
         path = ".pypirc";
         mode = "0600";
       };
       
       # Database connection strings for development
-      "dev/database-url" = {
+      databaseUrl = {
         reference = "op://Personal/Development-DB/connection-string";
         path = ".config/dev/database-url";
         mode = "0600";
       };
       
       # Cloud provider credentials
-      "aws/credentials" = {
+      awsCredentials = {
         reference = "op://Personal/AWS-Development/credentials";
         path = ".aws/credentials";
         mode = "0600";
@@ -344,21 +344,21 @@ If you prefer to use a user-specific token instead of the system token:
     
     secrets = {
       # SSH key for development
-      "ssh/dev-key" = {
+      sshDevKey = {
         reference = "op://Personal/SSH-Dev-Key/private-key";
         path = ".ssh/id_rsa";
         mode = "0600";
       };
       
       # Development environment file
-      "dev/env" = {
+      devEnvFile = {
         reference = "op://Personal/Development-Environment/env-file";
         path = ".config/dev/.env";
         mode = "0600";
       };
       
       # API keys for development tools
-      "dev/api-keys" = {
+      devApiKeys = {
         reference = "op://Personal/Development-API-Keys/all-keys";
         path = ".config/dev/api-keys";
         mode = "0600";

@@ -6,6 +6,23 @@
 }: let
   cfg = config.services.onepassword-secrets;
 
+  # Validate that secret keys use proper Nix variable naming (camelCase)
+  # Valid: databasePassword, sslCert, myApiKey
+  # Invalid: "database/password", "ssl-cert", "my_api_key"
+  isValidNixVariableName = key:
+    builtins.match "^[a-z][a-zA-Z0-9]*$" key != null;
+
+  # Validate all secret keys
+  validateSecretKeys = secrets: let
+    invalidKeys = lib.filter (key: !isValidNixVariableName key) (lib.attrNames secrets);
+  in
+    if invalidKeys != []
+    then throw "Invalid secret key names. OpNix requires camelCase variable names like 'databasePassword', not path-like strings. Invalid keys: ${lib.concatStringsSep ", " invalidKeys}"
+    else secrets;
+
+  # Utility function to convert camelCase to kebab-case for file paths
+  # Examples: databasePassword -> database-password, sslCert -> ssl
+
   # Create a new pkgs instance with our overlay
   pkgsWithOverlay = import pkgs.path {
     inherit (pkgs) system;
@@ -110,10 +127,10 @@ in {
         Keys are secret names, values are secret configurations.
       '';
       example = {
-        "database/password" = {
+        databasePassword = {
           reference = "op://Vault/Database/password";
         };
-        "ssl/cert" = {
+        sslCert = {
           reference = "op://Vault/SSL/certificate";
           path = "/etc/ssl/certs/app.pem";
           owner = "caddy";
@@ -147,7 +164,7 @@ in {
               then secret.path
               else "${cfg.outputDir}/${name}"
           )
-          cfg.secrets
+          (validateSecretKeys cfg.secrets)
         else {};
     }
 
@@ -175,8 +192,10 @@ in {
                 owner = secret.owner;
                 group = secret.group;
                 mode = secret.mode;
+                symlinks = secret.symlinks;
+                variables = secret.variables;
               })
-              cfg.secrets;
+              (validateSecretKeys cfg.secrets);
           })
         else null;
 

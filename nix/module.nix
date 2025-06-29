@@ -6,6 +6,20 @@
 }: let
   cfg = config.services.onepassword-secrets;
 
+  # Validate that secret keys use proper Nix variable naming (camelCase)
+  # Valid: databasePassword, sslCert, myApiKey
+  # Invalid: "database/password", "ssl-cert", "my_api_key"
+  isValidNixVariableName = key:
+    builtins.match "^[a-z][a-zA-Z0-9]*$" key != null;
+
+  # Validate all secret keys
+  validateSecretKeys = secrets: let
+    invalidKeys = lib.filter (key: !isValidNixVariableName key) (lib.attrNames secrets);
+  in
+    if invalidKeys != []
+    then throw "Invalid secret key names. OpNix requires camelCase variable names like 'databasePassword', not path-like strings. Invalid keys: ${lib.concatStringsSep ", " invalidKeys}"
+    else secrets;
+
   # Create a new pkgs instance with our overlay
   pkgsWithOverlay = import pkgs.path {
     inherit (pkgs) system;
@@ -156,11 +170,11 @@ in {
         Keys are secret names, values are secret configurations.
       '';
       example = {
-        "database/password" = {
+        databasePassword = {
           reference = "op://Vault/Database/password";
           services = ["postgresql"];
         };
-        "ssl/cert" = {
+        sslCert = {
           reference = "op://Vault/SSL/certificate";
           path = "/etc/ssl/certs/app.pem";
           owner = "caddy";
@@ -174,11 +188,11 @@ in {
             };
           };
         };
-        "service/config" = {
+        serviceConfig = {
           reference = "op://Vault/Service/config";
           variables = {
-            service = "postgresql";
-            environment = "prod";
+            DATABASE_URL = "postgresql://user:password@localhost/myapp";
+            API_KEY = "secret-api-key";
           };
         };
       };
@@ -301,7 +315,7 @@ in {
               then secret.path
               else "${cfg.outputDir}/${name}"
           )
-          cfg.secrets
+          (validateSecretKeys cfg.secrets)
         else {};
     }
 
@@ -333,7 +347,7 @@ in {
                 variables = secret.variables;
                 services = secret.services;
               })
-              cfg.secrets;
+              (validateSecretKeys cfg.secrets);
             pathTemplate = cfg.pathTemplate;
             defaults = cfg.defaults;
             systemdIntegration = cfg.systemdIntegration;

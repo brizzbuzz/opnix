@@ -102,12 +102,8 @@ func LoadMultiple(paths []string) (*Config, error) {
 		allSecrets = append(allSecrets, config.Secrets...)
 
 		// Merge path templates and defaults (last file wins)
-		if config.PathTemplate != "" {
-			// Will be set by the last config file that has it
-		}
-		if len(config.Defaults) > 0 {
-			// Will be set by the last config file that has it
-		}
+		// Path templates and defaults are merged (last file wins)
+		// These are handled in the merging logic below
 	}
 
 	// Use the last config's template and defaults for merged config

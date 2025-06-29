@@ -158,7 +158,7 @@ func (hs *HashStore) calculateHash(filePath string) (string, error) {
 			err,
 		)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() // Ignore error - defer cleanup is best effort
 
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, file); err != nil {

@@ -7,6 +7,7 @@ This guide helps you migrate from OpNix V0 to V1, which introduces significant i
 ### What's New in V1
 
 - **Declarative Configuration**: Define secrets directly in Nix configuration
+- **CamelCase Variable Names**: Idiomatic Nix variable naming (e.g., `databasePassword` instead of `"database/password"`)
 - **Flexible Ownership**: Per-secret user/group ownership and permissions
 - **Custom Paths**: Absolute paths and path templates
 - **Service Integration**: Automatic service restarts on secret changes
@@ -16,6 +17,7 @@ This guide helps you migrate from OpNix V0 to V1, which introduces significant i
 
 ### Breaking Changes
 
+- **CamelCase Variable Names Required**: Declarative secrets must use camelCase variable names (e.g., `databasePassword`, not `"database/password"`)
 - **Activation Scripts → systemd Services**: OpNix now uses systemd services instead of activation scripts
 - **New Module Structure**: Enhanced configuration options with better validation
 - **Path Behavior**: Custom path handling with backward compatibility
@@ -132,6 +134,99 @@ services.onepassword-secrets = {
 - Better configuration management
 - Enhanced service integration
 - Improved maintainability
+
+## CamelCase Variable Names Migration
+
+**Important**: Starting with OpNix V1, declarative secrets must use camelCase variable names instead of path-like strings.
+
+### Before (V0 Style - No Longer Supported)
+```nix
+services.onepassword-secrets.secrets = {
+  "database/password" = {
+    reference = "op://Vault/Database/password";
+  };
+  "ssl/cert" = {
+    reference = "op://Vault/SSL/certificate";
+  };
+  "api-keys/github" = {
+    reference = "op://Personal/GitHub/token";
+  };
+};
+```
+
+### After (V1 Required Format)
+```nix
+services.onepassword-secrets.secrets = {
+  databasePassword = {
+    reference = "op://Vault/Database/password";
+  };
+  sslCert = {
+    reference = "op://Vault/SSL/certificate";
+  };
+  githubApiKey = {
+    reference = "op://Personal/GitHub/token";
+  };
+};
+```
+
+### Naming Convention Rules
+
+1. **Start with lowercase letter**: `databasePassword` ✓, `DatabasePassword` ✗
+2. **Use camelCase**: `apiKey` ✓, `api_key` ✗, `api-key` ✗
+3. **No special characters**: `sslCert` ✓, `"ssl/cert"` ✗
+4. **Alphanumeric only**: `oauth2Token` ✓, `oauth2-token` ✗
+
+### Common Conversions
+
+| Old Format | New Format |
+|------------|------------|
+| `"database/password"` | `databasePassword` |
+| `"ssl/cert"` | `sslCert` |
+| `"api-keys/github"` | `githubApiKey` |
+| `"ssh/private-key"` | `sshPrivateKey` |
+| `"config/app-token"` | `appConfigToken` |
+
+### Migration Steps
+
+1. **Identify all declarative secrets** in your configuration
+2. **Convert keys to camelCase** following the naming rules
+3. **Update any references** to the secret paths in your configuration
+4. **Test the configuration** to ensure secrets are deployed correctly
+
+### Path Behavior
+
+The file paths remain the same - only the variable names change:
+
+```nix
+# Old format
+"ssl/cert" = {
+  reference = "op://Vault/SSL/certificate";
+  path = "/etc/ssl/certs/app.pem";  # Explicit path
+};
+
+# New format - same behavior
+sslCert = {
+  reference = "op://Vault/SSL/certificate";
+  path = "/etc/ssl/certs/app.pem";  # Same explicit path
+};
+```
+
+When no explicit `path` is provided, the variable name is used directly:
+
+```nix
+# This creates a file at: /var/lib/opnix/secrets/databasePassword
+databasePassword = {
+  reference = "op://Vault/Database/password";
+};
+```
+
+### Error Messages
+
+If you use invalid variable names, OpNix will fail with a clear error:
+
+```
+error: Invalid secret key names. OpNix requires camelCase variable names like 'databasePassword', not path-like strings. Invalid keys: "database/password", "ssl/cert"
+```
 
 ## Step-by-Step Migration
 

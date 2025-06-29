@@ -152,7 +152,7 @@ func (p *Processor) processSecret(secret config.Secret, secretName string) error
 
 // setOwnership sets the file ownership based on owner and group names
 func (p *Processor) setOwnership(path, owner, group, secretName string) error {
-	var uid, gid int = -1, -1
+	var uid, gid = -1, -1
 
 	// Resolve owner to UID
 	if owner != "" {
@@ -355,7 +355,7 @@ func (p *Processor) ensureDirectoryWritable(dir string) error {
 	}
 
 	// Clean up test file
-	os.Remove(testFile)
+	_ = os.Remove(testFile) // Ignore error - cleanup is best effort
 	return nil
 }
 
@@ -457,36 +457,6 @@ func (p *Processor) validateVariableValue(value, varName, secretName string) err
 			fmt.Sprintf("Variable value '%s' contains path traversal attempt (..)", value),
 			nil,
 		)
-	}
-
-	return nil
-}
-
-// cleanupBrokenSymlinks removes broken symlinks for a secret
-func (p *Processor) cleanupBrokenSymlinks(symlinks []string, secretName string) error {
-	for i, symlinkPath := range symlinks {
-		symlinkName := fmt.Sprintf("%s.symlinks[%d]", secretName, i)
-
-		// Check if symlink exists and is broken
-		if _, err := os.Stat(symlinkPath); os.IsNotExist(err) {
-			continue // Symlink doesn't exist, nothing to clean
-		}
-
-		// Check if it's a symlink
-		if linkInfo, err := os.Lstat(symlinkPath); err == nil && linkInfo.Mode()&os.ModeSymlink != 0 {
-			// Check if target exists
-			if _, err := os.Stat(symlinkPath); os.IsNotExist(err) {
-				// Symlink exists but target doesn't - it's broken
-				if err := os.Remove(symlinkPath); err != nil {
-					return errors.FileOperationError(
-						fmt.Sprintf("Cleaning up broken symlink %s", symlinkName),
-						symlinkPath,
-						"Failed to remove broken symlink",
-						err,
-					)
-				}
-			}
-		}
 	}
 
 	return nil

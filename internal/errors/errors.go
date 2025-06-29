@@ -264,20 +264,21 @@ func ServiceError(operation, serviceName, action string, cause error) *OpnixErro
 	suggestions := []string{}
 
 	// Add context-specific suggestions based on the action
-	if action == "restart" || action == "reload" {
+	switch action {
+	case "restart", "reload":
 		suggestions = append(suggestions,
 			fmt.Sprintf("Check service status: systemctl status %s", serviceName),
 			fmt.Sprintf("Check service logs: journalctl -u %s -n 20", serviceName),
-			fmt.Sprintf("Verify service configuration is valid"),
+			"Verify service configuration is valid",
 			fmt.Sprintf("Try manual restart: sudo systemctl restart %s", serviceName),
 		)
-	} else if action == "is-active" {
+	case "is-active":
 		suggestions = append(suggestions,
 			fmt.Sprintf("Check if service exists: systemctl cat %s", serviceName),
 			fmt.Sprintf("Check service status: systemctl status %s", serviceName),
 			"List all services: systemctl list-units --type=service",
 		)
-	} else if action == "cat" {
+	case "cat":
 		suggestions = append(suggestions,
 			fmt.Sprintf("Check if service unit file exists: ls -la /etc/systemd/system/%s.service", serviceName),
 			fmt.Sprintf("Check if service is installed: systemctl list-unit-files | grep %s", serviceName),

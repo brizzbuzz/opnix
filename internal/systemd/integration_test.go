@@ -287,9 +287,10 @@ func TestServiceActionConfiguration(t *testing.T) {
 	var backupAction *ServiceAction
 
 	for i := range actions {
-		if actions[i].Name == "postgresql" {
+		switch actions[i].Name {
+		case "postgresql":
 			pgAction = &actions[i]
-		} else if actions[i].Name == "backup-service" {
+		case "backup-service":
 			backupAction = &actions[i]
 		}
 	}

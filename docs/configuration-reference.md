@@ -95,18 +95,31 @@ services.onepassword-secrets = {
 #### `secrets`
 - **Type**: `attrsOf secretOptions`
 - **Default**: `{}`
-- **Description**: Declarative secrets configuration where keys are secret names
+- **Description**: Declarative secrets configuration using camelCase variable names as keys
+- **Validation**: Keys must follow camelCase naming convention (e.g., `databasePassword`, not `"database/password"`)
 
 **Example:**
 ```nix
 services.onepassword-secrets.secrets = {
-  "database/password" = {
+  databasePassword = {
     reference = "op://Homelab/Database/password";
     owner = "postgres";
     services = ["postgresql"];
   };
+  sslCertificate = {
+    reference = "op://Homelab/SSL/certificate";
+    path = "/etc/ssl/certs/app.pem";
+    owner = "caddy";
+    mode = "0644";
+  };
 };
 ```
+
+**Naming Rules:**
+- Start with lowercase letter: `databasePassword` ✓, `DatabasePassword` ✗
+- Use camelCase: `apiKey` ✓, `api_key` ✗, `api-key` ✗
+- Alphanumeric only: `oauth2Token` ✓, `"oauth2-token"` ✗
+- No quotes or special characters: `sslCert` ✓, `"ssl/cert"` ✗
 
 ### Secret Options
 
@@ -334,7 +347,7 @@ programs.onepassword-secrets = {
 **Example:**
 ```nix
 programs.onepassword-secrets.secrets = {
-  "ssh/private-key" = {
+  sshPrivateKey = {
     reference = "op://Personal/SSH/private-key";
     path = ".ssh/id_rsa";
     mode = "0600";
@@ -472,7 +485,7 @@ OpNix can automatically manage systemd services when secrets change:
 
 ```nix
 services.onepassword-secrets.secrets = {
-  "web/ssl-cert" = {
+  webSslCert = {
     reference = "op://Homelab/SSL/certificate";
     services = ["caddy" "nginx"];  # Restart these services when secret changes
   };
@@ -483,7 +496,7 @@ services.onepassword-secrets.secrets = {
 
 ```nix
 services.onepassword-secrets.secrets = {
-  "database/password" = {
+  databasePassword = {
     reference = "op://Homelab/Database/password";
     services = {
       postgresql = {
@@ -527,7 +540,7 @@ services.onepassword-secrets = {
   };
   
   secrets = {
-    "database-password" = {
+    databasePassword = {
       reference = "op://Homelab/Database/password";
       variables = {
         service = "postgresql";

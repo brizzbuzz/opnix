@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - Convert activation scripts to services to prevent unbootable systems
 - *(hm-module)* Ensure secretPaths option is always defined
 - *(nixos-module)* Ensure secretPaths option is always defined
+- 1Password section reference validation to support 4+ parts
 
 ### 📚 Documentation
 
