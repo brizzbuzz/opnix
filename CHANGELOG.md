@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2025-06-29
+
+### 🚀 Features
+
+- Major rewrite (#18)
+
 ## [0.6.0] - 2025-06-28
 
 ### 🚀 Features
