@@ -240,7 +240,7 @@ Update your flake input to use OpNix V1:
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     opnix.url = "github:brizzbuzz/opnix";  # This will get latest V1
     # Or pin to specific version:
-    # opnix.url = "github:brizzbuzz/opnix/v1.0.0";
+    # opnix.url = "github:brizzbuzz/opnix/v0.7.0";
   };
 }
 ```
