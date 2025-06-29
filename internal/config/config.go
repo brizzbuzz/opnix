@@ -16,12 +16,33 @@ type Secret struct {
 	Mode      string            `json:"mode,omitempty"`
 	Symlinks  []string          `json:"symlinks,omitempty"`
 	Variables map[string]string `json:"variables,omitempty"`
+	Services  interface{}       `json:"services,omitempty"`
+}
+
+type ChangeDetection struct {
+	Enable   bool   `json:"enable"`
+	HashFile string `json:"hashFile"`
+}
+
+type ErrorHandling struct {
+	RollbackOnFailure bool `json:"rollbackOnFailure"`
+	ContinueOnError   bool `json:"continueOnError"`
+	MaxRetries        int  `json:"maxRetries"`
+}
+
+type SystemdIntegration struct {
+	Enable          bool            `json:"enable"`
+	Services        []string        `json:"services"`
+	RestartOnChange bool            `json:"restartOnChange"`
+	ChangeDetection ChangeDetection `json:"changeDetection"`
+	ErrorHandling   ErrorHandling   `json:"errorHandling"`
 }
 
 type Config struct {
-	Secrets      []Secret          `json:"secrets"`
-	PathTemplate string            `json:"pathTemplate,omitempty"`
-	Defaults     map[string]string `json:"defaults,omitempty"`
+	Secrets            []Secret           `json:"secrets"`
+	PathTemplate       string             `json:"pathTemplate,omitempty"`
+	Defaults           map[string]string  `json:"defaults,omitempty"`
+	SystemdIntegration SystemdIntegration `json:"systemdIntegration,omitempty"`
 }
 
 // convertToValidationSecrets converts config secrets to validation format
@@ -36,6 +57,7 @@ func (c *Config) convertToValidationSecrets() []validation.SecretData {
 			Mode:         s.Mode,
 			Symlinks:     s.Symlinks,
 			Variables:    s.Variables,
+			Services:     s.Services,
 			PathTemplate: c.PathTemplate,
 			Defaults:     c.Defaults,
 		}
