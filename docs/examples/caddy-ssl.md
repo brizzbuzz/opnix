@@ -515,7 +515,6 @@ sudo journalctl -u opnix-secrets.service -u caddy.service -f
 
 ## Related Examples
 
-- [Nginx SSL Configuration](./nginx-ssl.md) - Alternative web server setup
-- [Traefik Configuration](./traefik.md) - Dynamic reverse proxy
-- [Multi-Environment Setup](./multi-environment.md) - Managing certificates across environments
-- [High Availability](./high-availability.md) - Certificate management in HA setups
+- [Basic Home Manager Setup](./basic-home-manager.md) - User-level secret management
+- [PostgreSQL Database](./postgresql.md) - Database credentials and setup
+- Check the [Examples Directory](./README.md) for more configuration examples

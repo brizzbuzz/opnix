@@ -692,7 +692,6 @@ sudo journalctl -u opnix-secrets.service -u postgresql.service -f
 
 ## Related Examples
 
-- [Basic NixOS Setup](./basic-nixos.md) - Foundation for database server setup
-- [Grafana Configuration](./grafana.md) - Monitoring PostgreSQL with Grafana
-- [Multi-Environment Setup](./multi-environment.md) - Managing databases across environments
-- [High Availability](./high-availability.md) - PostgreSQL clustering with OpNix
+- [Basic Home Manager Setup](./basic-home-manager.md) - User-level secret management
+- [Caddy Web Server](./caddy-ssl.md) - SSL certificates for web services
+- Check the [Examples Directory](./README.md) for more configuration examples

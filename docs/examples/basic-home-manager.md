@@ -613,7 +613,6 @@ echo $GITHUB_TOKEN | head -c 20
 
 ## Related Examples
 
-- [Basic NixOS Setup](./basic-nixos.md) - System-level secret management
-- [Basic nix-darwin Setup](./basic-darwin.md) - macOS system secrets
-- [Multi-Environment Setup](./multi-environment.md) - Managing secrets across environments
-- [Development Environment](./macos-development.md) - Advanced development setup
+- [Caddy Web Server](./caddy-ssl.md) - SSL certificates for web services
+- [PostgreSQL Database](./postgresql.md) - Database credentials and setup
+- Check the [Examples Directory](./README.md) for more configuration examples

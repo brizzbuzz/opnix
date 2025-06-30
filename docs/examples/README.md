@@ -5,44 +5,18 @@ This directory contains real-world configuration examples for common OpNix use c
 ## Table of Contents
 
 ### Basic Examples
-- [Basic NixOS Setup](./basic-nixos.md) - Simple systemd-based secret management
-- [Basic nix-darwin Setup](./basic-darwin.md) - macOS system secret management
+### Available Examples
 - [Basic Home Manager Setup](./basic-home-manager.md) - User-level secret management
-
-### Web Services
-- [Caddy Web Server](./caddy-ssl.md) - SSL certificates and reverse proxy configuration
-- [Nginx with SSL](./nginx-ssl.md) - Web server with automatic SSL certificate management
-- [Traefik Reverse Proxy](./traefik.md) - Dynamic reverse proxy with secret management
-
-### Databases
+- [Caddy Web Server](./caddy-ssl.md) - SSL certificates and reverse proxy configuration  
 - [PostgreSQL](./postgresql.md) - Database credentials and SSL certificates
-- [MySQL/MariaDB](./mysql.md) - Database setup with user credentials
-- [Redis](./redis.md) - Redis authentication and SSL configuration
 
-### Application Services
-- [Grafana](./grafana.md) - Monitoring dashboards with secret keys
-- [Nextcloud](./nextcloud.md) - Self-hosted cloud with database and admin credentials
-- [GitLab Runner](./gitlab-runner.md) - CI/CD runner with registration tokens
-
-### Advanced Patterns
-- [Multi-Environment Setup](./multi-environment.md) - Dev/staging/prod secret management
-- [Service Orchestration](./service-orchestration.md) - Complex service dependencies
-- [Path Templates](./path-templates.md) - Organized secret paths with variables
-- [High Availability](./high-availability.md) - Secrets in HA cluster setups
-
-### Platform-Specific
-- [NixOS Server](./nixos-server.md) - Complete server configuration with secrets
-- [macOS Development](./macos-development.md) - Development environment secrets
-- [Home Manager Multi-User](./home-manager-multi-user.md) - Shared system with per-user secrets
-
-### Integration Examples
-- [Docker Compose](./docker-compose.md) - Container secrets via OpNix
-- [Kubernetes](./kubernetes.md) - Kubernetes secret management integration
-- [Terraform](./terraform.md) - Infrastructure automation with secret management
-
-### Migration Examples
-- [V0 to V1 Migration](./v0-to-v1-migration.md) - Step-by-step migration examples
-- [Legacy System Integration](./legacy-integration.md) - Integrating with existing systems
+### More Examples Coming Soon
+We're working on expanding our example collection. Check back for more examples covering:
+- Basic NixOS and nix-darwin setups
+- Additional web services (Nginx, Traefik)
+- Database configurations (MySQL, Redis)
+- Application services (Grafana, Nextcloud)
+- Advanced patterns and multi-environment setups
 
 ## Quick Reference
 

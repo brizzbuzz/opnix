@@ -86,8 +86,6 @@ sudo nixos-rebuild switch --flake .
 
 ### Examples
 - **[Examples Directory](./examples/)** - Real-world configuration examples
-  - [Basic NixOS Setup](./examples/basic-nixos.md)
-  - [Basic nix-darwin Setup](./examples/basic-darwin.md)
   - [Basic Home Manager Setup](./examples/basic-home-manager.md)
   - [Caddy Web Server](./examples/caddy-ssl.md)
   - [PostgreSQL Database](./examples/postgresql.md)
