@@ -1,5 +1,12 @@
 # OpNix
 
+
+
+
+
+
+
+
 Secure 1Password secrets integration for NixOS, nix-darwin, and Home Manager.
 
 ## Features
@@ -17,11 +24,26 @@ Add OpNix to your flake:
 ```nix
 {
   inputs = {
+
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     opnix.url = "github:brizzbuzz/opnix";
   };
 
   outputs = { nixpkgs, opnix, ... }: {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     # NixOS
     nixosConfigurations.yourhostname = nixpkgs.lib.nixosSystem {
       modules = [
@@ -53,9 +75,55 @@ Configure secrets:
 
 ```nix
 # NixOS/nix-darwin
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 services.onepassword-secrets = {
   enable = true;
   tokenFile = "/etc/opnix-token";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   secrets = {
     databasePassword = {
       reference = "op://Homelab/Database/password";
@@ -69,6 +137,7 @@ services.onepassword-secrets = {
 programs.onepassword-secrets = {
   enable = true;
   secrets = {
+
     sshPrivateKey = {
       reference = "op://Personal/SSH/private-key";
       path = ".ssh/id_rsa";
@@ -82,7 +151,15 @@ Set up your token:
 
 ```bash
 sudo opnix token set
+
+
+
 sudo nixos-rebuild switch --flake .
+
+
+
+
+
 ```
 
 ## Documentation
@@ -98,12 +175,12 @@ sudo nixos-rebuild switch --flake .
 
 ## Platform Support
 
-| Platform | Module
- | Use Case |
-|----------|--------|----------|
-| **NixOS** | `nixosModules.default` | System-wide secret management |
-| **nix-darwin** | `darwinModules.default` | macOS system secrets |
-| **Home Manager** | `homeManagerModules.default` | User-specific secrets |
+| Platform         | Module                       | Use Case                      |
+| ---------------- | ---------------------------- | ----------------------------- |
+| **NixOS**        | `nixosModules.default`       | System-wide secret management |
+| **nix-darwin**   | `darwinModules.default`      | macOS system secrets          |
+
+| **Home Manager** | `homeManagerModules.default` | User-specific secrets         |
 
 ## Getting Help
 
@@ -114,3 +191,69 @@ sudo nixos-rebuild switch --flake .
 ## License
 
 [MIT License](LICENSE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
