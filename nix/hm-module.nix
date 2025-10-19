@@ -57,7 +57,10 @@
 
       group = lib.mkOption {
         type = lib.types.str;
-        default = "users";
+        default =
+          if pkgs.stdenv.isDarwin
+          then "staff"
+          else config.home.username;
         description = "Group that owns the secret file";
       };
 
