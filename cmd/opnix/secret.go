@@ -10,6 +10,7 @@ import (
 	"github.com/brizzbuzz/opnix/internal/errors"
 	"github.com/brizzbuzz/opnix/internal/onepass"
 	"github.com/brizzbuzz/opnix/internal/secrets"
+	"github.com/brizzbuzz/opnix/internal/systemd"
 	"github.com/brizzbuzz/opnix/internal/validation"
 )
 
@@ -73,12 +74,49 @@ func (s *secretCommand) Run() error {
 
 	// Process secrets with detailed progress
 	processor := secrets.NewProcessor(client, s.outputDir)
-	if err := processor.Process(cfg); err != nil {
+	result, err := processor.Process(cfg)
+	if err != nil {
 		// Error already has context from processor.Process
 		return err
 	}
 
-	log.Printf("Successfully processed all secrets to %s", s.outputDir)
+	log.Printf("Successfully processed %d secrets to %s", result.ProcessedCount, s.outputDir)
+
+	// Process systemd integration if enabled
+	if cfg.SystemdIntegration.Enable {
+		log.Printf("Processing systemd integration for %d services", len(cfg.SystemdIntegration.Services))
+
+		systemdManager, err := systemd.NewManager(cfg.SystemdIntegration)
+		if err != nil {
+			return errors.WrapWithSuggestions(
+				err,
+				"Initializing systemd integration",
+				"systemd integration",
+				[]string{
+					"Ensure systemctl is available in PATH",
+					"Check if running on a systemd-enabled system",
+					"Consider disabling systemd integration if not needed",
+				},
+			)
+		}
+
+		if err := systemdManager.ProcessSecretChanges(cfg.Secrets, result.SecretPaths); err != nil {
+			return errors.WrapWithSuggestions(
+				err,
+				"Processing systemd service changes",
+				"systemd integration",
+				[]string{
+					"Check if specified services exist and are accessible",
+					"Verify systemctl permissions",
+					"Review systemd integration configuration",
+					"Check systemd service logs: journalctl -u <service-name>",
+				},
+			)
+		}
+
+		log.Printf("Successfully processed systemd integration")
+	}
+
 	return nil
 }
 

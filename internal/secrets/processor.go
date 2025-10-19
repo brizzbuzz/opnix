@@ -17,6 +17,11 @@ type SecretClient interface {
 	ResolveSecret(reference string) (string, error)
 }
 
+type ProcessResult struct {
+	SecretPaths    map[string]string // Maps secret names to their file paths
+	ProcessedCount int
+}
+
 type Processor struct {
 	client       SecretClient
 	outputDir    string
@@ -40,7 +45,7 @@ func NewProcessorWithConfig(client SecretClient, outputDir, pathTemplate string,
 	}
 }
 
-func (p *Processor) Process(cfg *config.Config) error {
+func (p *Processor) Process(cfg *config.Config) (*ProcessResult, error) {
 	// Update processor with config-level settings
 	if cfg.PathTemplate != "" {
 		p.pathTemplate = cfg.PathTemplate
@@ -50,7 +55,7 @@ func (p *Processor) Process(cfg *config.Config) error {
 	}
 
 	if err := os.MkdirAll(p.outputDir, 0755); err != nil {
-		return errors.FileOperationError(
+		return nil, errors.FileOperationError(
 			"Creating output directory",
 			p.outputDir,
 			"Failed to create output directory",
@@ -58,10 +63,16 @@ func (p *Processor) Process(cfg *config.Config) error {
 		)
 	}
 
+	result := &ProcessResult{
+		SecretPaths:    make(map[string]string),
+		ProcessedCount: 0,
+	}
+
 	for i, secret := range cfg.Secrets {
 		secretName := fmt.Sprintf("secret[%d]:%s", i, secret.Path)
-		if err := p.processSecret(secret, secretName); err != nil {
-			return errors.WrapWithSuggestions(
+		outputPath, err := p.processSecret(secret, secretName)
+		if err != nil {
+			return nil, errors.WrapWithSuggestions(
 				err,
 				fmt.Sprintf("Processing %s", secretName),
 				"secret processing",
@@ -72,16 +83,19 @@ func (p *Processor) Process(cfg *config.Config) error {
 				},
 			)
 		}
+
+		result.SecretPaths[secretName] = outputPath
+		result.ProcessedCount++
 	}
 
-	return nil
+	return result, nil
 }
 
-func (p *Processor) processSecret(secret config.Secret, secretName string) error {
+func (p *Processor) processSecret(secret config.Secret, secretName string) (string, error) {
 	// Resolve the secret value from 1Password
 	value, err := p.client.ResolveSecret(secret.Reference)
 	if err != nil {
-		return errors.OnePasswordError(
+		return "", errors.OnePasswordError(
 			fmt.Sprintf("Resolving secret %s", secretName),
 			fmt.Sprintf("Failed to resolve 1Password reference: %s", secret.Reference),
 			err,
@@ -91,18 +105,18 @@ func (p *Processor) processSecret(secret config.Secret, secretName string) error
 	// Determine output path with enhanced path management
 	outputPath, err := p.resolveSecretPathWithTemplate(secret, secretName)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Validate the resolved path for security
 	if err := p.validateSecretPath(outputPath, secretName); err != nil {
-		return err
+		return "", err
 	}
 
 	// Create parent directory if needed (validation already ensured it's writable)
 	parentDir := filepath.Dir(outputPath)
 	if err := os.MkdirAll(parentDir, 0755); err != nil {
-		return errors.FileOperationError(
+		return "", errors.FileOperationError(
 			fmt.Sprintf("Creating parent directory for %s", secretName),
 			parentDir,
 			"Failed to create parent directory",
@@ -117,7 +131,7 @@ func (p *Processor) processSecret(secret config.Secret, secretName string) error
 	}
 	fileMode, err := strconv.ParseUint(mode, 8, 32)
 	if err != nil {
-		return errors.ValidationError(
+		return "", errors.ValidationError(
 			fmt.Sprintf("Parsing file mode for %s", secretName),
 			"mode",
 			mode,
@@ -127,7 +141,7 @@ func (p *Processor) processSecret(secret config.Secret, secretName string) error
 
 	// Write file with specified permissions
 	if err := os.WriteFile(outputPath, []byte(value), os.FileMode(fileMode)); err != nil {
-		return errors.FileOperationError(
+		return "", errors.FileOperationError(
 			fmt.Sprintf("Writing secret file for %s", secretName),
 			outputPath,
 			"Failed to write secret to file",
@@ -138,16 +152,16 @@ func (p *Processor) processSecret(secret config.Secret, secretName string) error
 	// Set ownership if specified
 	if secret.Owner != "" || secret.Group != "" {
 		if err := p.setOwnership(outputPath, secret.Owner, secret.Group, secretName); err != nil {
-			return err
+			return "", err
 		}
 	}
 
 	// Create symlinks if specified
 	if err := p.createSymlinks(outputPath, secret.Symlinks, secretName); err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return outputPath, nil
 }
 
 // setOwnership sets the file ownership based on owner and group names
