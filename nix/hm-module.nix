@@ -60,7 +60,7 @@
         default =
           if pkgs.stdenv.isDarwin
           then "staff"
-          else config.home.username;
+          else "users";
         description = "Group that owns the secret file";
       };
 
