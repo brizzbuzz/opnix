@@ -51,8 +51,17 @@ func TestProcessor(t *testing.T) {
 	}
 
 	// Process secrets
-	if err := processor.Process(cfg); err != nil {
+	result, err := processor.Process(cfg)
+	if err != nil {
 		t.Fatalf("Failed to process secrets: %v", err)
+	}
+
+	if result.ProcessedCount != 1 {
+		t.Errorf("Expected 1 processed secret, got %d", result.ProcessedCount)
+	}
+
+	if len(result.SecretPaths) != 1 {
+		t.Errorf("Expected 1 secret path, got %d", len(result.SecretPaths))
 	}
 
 	// Verify output
@@ -109,8 +118,13 @@ func TestProcessorWithOwnership(t *testing.T) {
 	}
 
 	// Process secrets
-	if err := processor.Process(cfg); err != nil {
+	result, err := processor.Process(cfg)
+	if err != nil {
 		t.Fatalf("Failed to process secrets: %v", err)
+	}
+
+	if result.ProcessedCount != 2 {
+		t.Errorf("Expected 2 processed secrets, got %d", result.ProcessedCount)
 	}
 
 	// Verify SSL cert file
@@ -181,7 +195,8 @@ func TestProcessorModeValidation(t *testing.T) {
 			},
 		}
 
-		if err := processor.Process(cfg); err != nil {
+		_, err := processor.Process(cfg)
+		if err != nil {
 			t.Errorf("Valid mode should not fail: %v", err)
 		}
 
@@ -207,7 +222,7 @@ func TestProcessorModeValidation(t *testing.T) {
 			},
 		}
 
-		err := processor.Process(cfg)
+		_, err := processor.Process(cfg)
 		if err == nil {
 			t.Error("Expected error with invalid mode, got nil")
 		}
@@ -251,7 +266,7 @@ func TestProcessorOwnershipValidation(t *testing.T) {
 			},
 		}
 
-		err := processor.Process(cfg)
+		_, err := processor.Process(cfg)
 		if err == nil {
 			t.Error("Expected error with invalid user, got nil")
 		}
@@ -271,7 +286,7 @@ func TestProcessorOwnershipValidation(t *testing.T) {
 			},
 		}
 
-		err := processor.Process(cfg)
+		_, err := processor.Process(cfg)
 		if err == nil {
 			t.Error("Expected error with invalid group, got nil")
 		}
@@ -291,7 +306,8 @@ func TestProcessorOwnershipValidation(t *testing.T) {
 			},
 		}
 
-		if err := processor.Process(cfg); err != nil {
+		_, err := processor.Process(cfg)
+		if err != nil {
 			t.Errorf("No ownership should not fail: %v", err)
 		}
 
