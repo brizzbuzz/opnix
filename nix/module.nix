@@ -405,7 +405,7 @@ in {
             script = ''
               # Ensure output directory exists with correct permissions
               mkdir -p ${cfg.outputDir}
-              chmod 750 ${cfg.outputDir}
+              chmod 751 ${cfg.outputDir}
 
               # Create systemd integration directories if needed
               ${lib.optionalString cfg.systemdIntegration.enable (
