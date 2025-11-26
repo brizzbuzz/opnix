@@ -25,7 +25,7 @@
 
   # Create a new pkgs instance with our overlay
   pkgsWithOverlay = import pkgs.path {
-    inherit (pkgs) system;
+    system = pkgs.stdenv.hostPlatform.system;
     overlays = [
       (final: prev: {
         opnix = import ./package.nix {pkgs = final;};
