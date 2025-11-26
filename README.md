@@ -98,8 +98,7 @@ sudo nixos-rebuild switch --flake .
 
 ## Platform Support
 
-| Platform | Module
- | Use Case |
+| Platform | Module | Use Case |
 |----------|--------|----------|
 | **NixOS** | `nixosModules.default` | System-wide secret management |
 | **nix-darwin** | `darwinModules.default` | macOS system secrets |
