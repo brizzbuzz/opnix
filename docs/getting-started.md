@@ -151,25 +151,19 @@ services.onepassword-secrets = {
 
 ### Step 4 (Optional): Inject Secrets into Development Shells
 
-OpNix can hydrate environment variables when you enter a `nix develop` shell. Embed the configuration directly in `flake.nix`:
+OpNix can hydrate environment variables when you enter a `nix develop` shell. Embed the configuration directly in `flake.nix`—no extra files required:
 
 ```nix
 let
-  opnixEnvConfig = pkgs.writeText "opnix-env.json" (builtins.toJSON {
+  opnixEnvConfig = {
     vars = [
       { name = "API_TOKEN"; reference = "op://Homelab/API/token"; }
       { name = "OPTIONAL_SECRET"; reference = "op://Homelab/Legacy/secret"; optional = true; }
     ];
-  });
-
-  opnixEnvTokenFile =
-    let tokenPath = builtins.getEnv "OPNIX_ENV_TOKEN_FILE";
-    in if tokenPath == "" then null else tokenPath;
+  };
 in {
   devShells.default = import ./nix/devshell.nix ({
     inherit pkgs buildOpnix opnixEnvConfig;
-  } // pkgs.lib.optionalAttrs (opnixEnvTokenFile != null) {
-    inherit opnixEnvTokenFile;
   });
 }
 ```
@@ -182,7 +176,7 @@ When you run `nix develop`, OpNix will:
 
 > **Tip:** If you rely on a token file, export `OPNIX_ENV_TOKEN_FILE=/path/to/token` before launching the devshell (or place it in your shell profile/`direnv`).
 > The devshell defaults this to `$HOME/.config/opnix/token`, so creating that file once keeps things seamless.
-> The configuration defined in Nix is passed directly to `opnix env`; no temporary files or manual exports needed.
+> The configuration defined in Nix is passed straight to `opnix env`; no temporary files or manual exports needed.
 
 Set `OPNIX_ENV_DISABLE=1` to skip resolution (useful for offline or CI runs).
 

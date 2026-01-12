@@ -625,28 +625,18 @@ services.onepassword-secrets = {
 
 OpNix can resolve 1Password secrets directly into environment variables for development tooling. This is useful for `nix develop` shells, CI jobs, or local scripting where writing secrets to disk is undesirable.
 
-### Environment Configuration File
+### Environment Configuration
 
-Create an `opnix-env.json` file describing each environment variable you need:
+Describe your environment in Nix (or provide JSON on the CLI):
 
-```json
+```nix
 {
-  "vars": [
-    {
-      "name": "API_TOKEN",
-      "reference": "op://Homelab/API/token"
-    },
-    {
-      "name": "STATIC_VALUE",
-      "value": "local-dev"
-    },
-    {
-      "name": "OPTIONAL_PASSWORD",
-      "reference": "op://Services/Database/password",
-      "optional": true
-    }
-  ],
-  "format": "shell"
+  format = "shell";
+  vars = [
+    { name = "API_TOKEN"; reference = "op://Homelab/API/token"; }
+    { name = "STATIC_VALUE"; value = "local-dev"; }
+    { name = "OPTIONAL_PASSWORD"; reference = "op://Services/Database/password"; optional = true; }
+  ];
 }
 ```
 
@@ -665,24 +655,17 @@ Create an `opnix-env.json` file describing each environment variable you need:
 Resolve environment variables on demand:
 
 ```bash
-# Print shell exports (default)
-opnix env -config opnix-env.json
-
-# Or supply inline JSON directly
+# Inline JSON for quick scripting
 opnix env -config-json '{"vars":[{"name":"API_TOKEN","reference":"op://Homelab/API/token"}]}'
 
 # Emit dotenv-compatible output
-opnix env -config opnix-env.json -format dotenv
+opnix env -config-json '{"vars":[{"name":"API_TOKEN","reference":"op://Homelab/API/token"}]}' -format dotenv
 
 # Produce a JSON object
-opnix env -config opnix-env.json -format json
+opnix env -config-json '{"vars":[{"name":"API_TOKEN","reference":"op://Homelab/API/token"}]}' -format json
 ```
 
-The command reads tokens from `OP_SERVICE_ACCOUNT_TOKEN` or `-token-file` just like `opnix secret`. Static `value` entries do not require a token. You can also supply inline configuration via `OPNIX_ENV_CONFIG_JSON`:
-
-```bash
-OPNIX_ENV_CONFIG_JSON='{"vars":[{"name":"API_TOKEN","reference":"op://Homelab/API/token"}]}' opnix env
-```
+The command reads tokens from `OP_SERVICE_ACCOUNT_TOKEN` or `-token-file` just like `opnix secret`. Static `value` entries do not require a token.
 
 ### Devshell Integration
 

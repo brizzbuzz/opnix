@@ -21,13 +21,13 @@ Describe the desired variables in Nix so the configuration lives alongside the f
 
 ```nix
 let
-  opnixEnvConfig = pkgs.writeText "opnix-env.json" (builtins.toJSON {
+  opnixEnvConfig = {
     vars = [
       { name = "API_TOKEN"; reference = "op://Homelab/API/token"; }
       { name = "LOCAL_DB_PASSWORD"; reference = "op://Homelab/Database/password"; optional = true; }
       { name = "STATIC_ENV"; value = "dev"; }
     ];
-  });
+  };
 in
 ```
 
@@ -53,12 +53,12 @@ Wire the config into your flake:
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
       buildOpnix = opnix.packages.${system}.default;
-      opnixEnvConfig = pkgs.writeText "opnix-env.json" (builtins.toJSON {
+      opnixEnvConfig = {
         vars = [
           { name = "API_TOKEN"; reference = "op://Homelab/API/token"; }
           { name = "LOCAL_DB_PASSWORD"; reference = "op://Homelab/Database/password"; optional = true; }
         ];
-      });
+      };
       opnixEnvTokenFile =
         let tokenPath = builtins.getEnv "OPNIX_ENV_TOKEN_FILE";
         in if tokenPath == "" then null else tokenPath;
