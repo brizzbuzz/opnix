@@ -20,6 +20,16 @@
 
       src = import ./nix/source.nix {inherit pkgs;};
 
+      opnixDevEnvConfig = {
+        format = "shell";
+        vars = [
+          {
+            name = "API_TOKEN";
+            reference = "op://Homelab/DevShell API/token";
+          }
+        ];
+      };
+
       buildOpnix = pkgs.buildGoModule {
         pname = "opnix";
         version = "0.9.0";
@@ -34,7 +44,13 @@
           build = buildOpnix;
         };
     in {
-      devShells.default = import ./nix/devshell.nix {inherit pkgs buildOpnix;};
+      devShells.default = let
+        devshellArgs = {
+          inherit pkgs buildOpnix;
+          opnixEnvConfig = opnixDevEnvConfig;
+        };
+      in
+        import ./nix/devshell.nix devshellArgs;
       packages.default = buildOpnix;
       inherit checks;
       formatter = pkgs.alejandra;

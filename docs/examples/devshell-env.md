@@ -74,8 +74,8 @@ Wire the config into your flake:
 
 The bundled `nix/devshell.nix`:
 
-1. Sets `OPNIX_ENV_CONFIG` to the provided path.
-2. Calls `opnix env -format shell` when the shell starts.
+1. Calls `opnix env -config-json … -format shell` with the Nix-defined configuration.
+2. Defaults `OPNIX_ENV_TOKEN_FILE` to `$HOME/.config/opnix/token` when unset.
 3. `eval`s the command output to export environment variables.
 
 ## Usage
@@ -92,20 +92,20 @@ echo "$API_TOKEN"
 - `OPNIX_ENV_DISABLE=1 nix develop` – skip secret resolution (useful offline or in CI).
 - `OPNIX_ENV_TOKEN_FILE=/path/to/token nix develop` – override the token path.
 - `OP_SERVICE_ACCOUNT_TOKEN=... nix develop` – use an in-memory token instead of a file.
-- If unset, the flake defaults `OPNIX_ENV_TOKEN_FILE` to `$HOME/.config/opnix/token`.
+- If unset, the devshell defaults `OPNIX_ENV_TOKEN_FILE` to `$HOME/.config/opnix/token`.
 
 ### Alternative Formats
 
 Need a `.env` file?
 
 ```bash
-opnix env -config "$OPNIX_ENV_CONFIG" -format dotenv > .env
+opnix env -config-json '{"vars":[{"name":"API_TOKEN","reference":"op://Homelab/API/token"}]}' -format dotenv > .env
 ```
 
 Or a JSON blob for scripting:
 
 ```bash
-opnix env -config "$OPNIX_ENV_CONFIG" -format json | jq .
+opnix env -config-json '{"vars":[{"name":"API_TOKEN","reference":"op://Homelab/API/token"}]}' -format json | jq .
 ```
 
 ## Recommended Token Setup
@@ -120,7 +120,7 @@ export OPNIX_ENV_TOKEN_FILE=$HOME/.config/opnix/token
 
 ## Troubleshooting
 
-- `WARNING: opnix env config not found` – verify `OPNIX_ENV_CONFIG` points to an existing file.
+- `WARNING: no opnix environment configuration provided` – ensure `opnixEnvConfig` is set in your flake.
 - `failed to resolve opnix environment variables` – check token access or references.
 - Optional variables emit warnings but never abort the shell.
 

@@ -181,7 +181,8 @@ When you run `nix develop`, OpNix will:
 - export them into the shell (`export API_TOKEN='...'`)
 
 > **Tip:** If you rely on a token file, export `OPNIX_ENV_TOKEN_FILE=/path/to/token` before launching the devshell (or place it in your shell profile/`direnv`).
-> The flake defaults this to `$HOME/.config/opnix/token`, so creating that file once keeps things seamless.
+> The devshell defaults this to `$HOME/.config/opnix/token`, so creating that file once keeps things seamless.
+> The configuration defined in Nix is passed directly to `opnix env`; no temporary files or manual exports needed.
 
 Set `OPNIX_ENV_DISABLE=1` to skip resolution (useful for offline or CI runs).
 

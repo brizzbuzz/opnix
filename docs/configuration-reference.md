@@ -668,6 +668,9 @@ Resolve environment variables on demand:
 # Print shell exports (default)
 opnix env -config opnix-env.json
 
+# Or supply inline JSON directly
+opnix env -config-json '{"vars":[{"name":"API_TOKEN","reference":"op://Homelab/API/token"}]}'
+
 # Emit dotenv-compatible output
 opnix env -config opnix-env.json -format dotenv
 
@@ -675,7 +678,11 @@ opnix env -config opnix-env.json -format dotenv
 opnix env -config opnix-env.json -format json
 ```
 
-The command reads tokens from `OP_SERVICE_ACCOUNT_TOKEN` or `-token-file` just like `opnix secret`. Static `value` entries do not require a token.
+The command reads tokens from `OP_SERVICE_ACCOUNT_TOKEN` or `-token-file` just like `opnix secret`. Static `value` entries do not require a token. You can also supply inline configuration via `OPNIX_ENV_CONFIG_JSON`:
+
+```bash
+OPNIX_ENV_CONFIG_JSON='{"vars":[{"name":"API_TOKEN","reference":"op://Homelab/API/token"}]}' opnix env
+```
 
 ### Devshell Integration
 
@@ -683,14 +690,12 @@ The default OpNix devshell automatically evaluates `opnix env` when an environme
 
 ```nix
 let
-  opnixEnvConfig =
-    pkgs.writeText "opnix-env.json"
-      (builtins.toJSON {
-        vars = [
-          { name = "API_TOKEN"; reference = "op://Homelab/DevShell API/token"; }
-          { name = "STATIC_ENV"; value = "dev"; }
-        ];
-      });
+  opnixEnvConfig = {
+    vars = [
+      { name = "API_TOKEN"; reference = "op://Homelab/DevShell API/token"; }
+      { name = "STATIC_ENV"; value = "dev"; }
+    ];
+  };
 
   opnixEnvTokenFile =
     let tokenPath = builtins.getEnv "OPNIX_ENV_TOKEN_FILE";
@@ -706,7 +711,6 @@ in {
 
 Runtime behaviour can be tweaked with environment variables:
 
-- `OPNIX_ENV_CONFIG`: Path to the environment config (auto-set when `opnixEnvConfig` is supplied).
 - `OPNIX_ENV_TOKEN_FILE`: Custom token path for devshell usage (defaults to `$HOME/.config/opnix/token` when unset).
 - `OPNIX_ENV_DISABLE`: Any non-empty value skips secret resolution (useful for CI or offline work).
 

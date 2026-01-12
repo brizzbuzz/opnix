@@ -98,8 +98,6 @@ func handleError(err error) {
 	}
 }
 
-const defaultEnvConfigPath = "opnix-env.json"
-
 type envCommand struct {
 	fs *flag.FlagSet
 
@@ -107,8 +105,11 @@ type envCommand struct {
 	tokenFile  string
 	format     string
 
-	loadConfig func(string) (*envConfig, error)
-	newClient  func(string) (secretResolver, error)
+	configJSON string
+
+	loadConfig  func(string) (*envConfig, error)
+	parseConfig func(string) (*envConfig, error)
+	newClient   func(string) (secretResolver, error)
 }
 
 type secretResolver interface {
@@ -152,7 +153,8 @@ func newEnvCommand() *envCommand {
 		fs: flag.NewFlagSet("env", flag.ExitOnError),
 	}
 
-	cmd.fs.StringVar(&cmd.configPath, "config", defaultEnvConfigPath, "Path to environment configuration file")
+	cmd.fs.StringVar(&cmd.configPath, "config", "", "Path to environment configuration file")
+	cmd.fs.StringVar(&cmd.configJSON, "config-json", "", "Inline environment configuration as JSON")
 	cmd.fs.StringVar(&cmd.tokenFile, "token-file", defaultTokenPath, "Path to file containing 1Password service account token")
 	cmd.fs.StringVar(&cmd.format, "format", "", "Output format: shell (default), dotenv, json")
 
@@ -164,6 +166,7 @@ func newEnvCommand() *envCommand {
 	}
 
 	cmd.loadConfig = loadEnvConfig
+	cmd.parseConfig = parseEnvConfigString
 	cmd.newClient = func(path string) (secretResolver, error) {
 		return onepass.NewClient(path)
 	}
@@ -178,11 +181,7 @@ func (e *envCommand) Init(args []string) error {
 }
 
 func (e *envCommand) Run() error {
-	if err := e.validateConfigFile(); err != nil {
-		return err
-	}
-
-	cfg, err := e.loadConfig(e.configPath)
+	cfg, err := e.resolveConfig()
 	if err != nil {
 		return err
 	}
@@ -232,25 +231,32 @@ func (e *envCommand) Run() error {
 	return nil
 }
 
-func (e *envCommand) validateConfigFile() error {
-	if _, err := os.Stat(e.configPath); err != nil {
-		if os.IsNotExist(err) {
-			return errors.FileOperationError(
-				"Checking environment configuration file",
-				e.configPath,
-				"Environment configuration file does not exist",
-				err,
-			)
+func (e *envCommand) resolveConfig() (*envConfig, error) {
+	if strings.TrimSpace(e.configJSON) == "" {
+		if envJSON := os.Getenv("OPNIX_ENV_CONFIG_JSON"); strings.TrimSpace(envJSON) != "" {
+			e.configJSON = envJSON
 		}
-
-		return errors.FileOperationError(
-			"Checking environment configuration file",
-			e.configPath,
-			"Failed to access environment configuration file",
-			err,
-		)
 	}
-	return nil
+
+	if strings.TrimSpace(e.configPath) == "" {
+		if envPath := os.Getenv("OPNIX_ENV_CONFIG"); strings.TrimSpace(envPath) != "" {
+			e.configPath = envPath
+		}
+	}
+
+	if strings.TrimSpace(e.configJSON) != "" {
+		return e.parseConfig(e.configJSON)
+	}
+
+	if strings.TrimSpace(e.configPath) != "" {
+		return e.loadConfig(e.configPath)
+	}
+
+	return nil, errors.ConfigError(
+		"Loading environment configuration",
+		"No environment configuration provided. Use -config, -config-json, OPNIX_ENV_CONFIG, or OPNIX_ENV_CONFIG_JSON.",
+		nil,
+	)
 }
 
 func (e *envCommand) buildResolver(cfg *envConfig) (secretResolver, error) {
@@ -346,11 +352,33 @@ func loadEnvConfig(path string) (*envConfig, error) {
 		)
 	}
 
+	return parseEnvConfig(data)
+}
+
+func parseEnvConfigString(raw string) (*envConfig, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, errors.ConfigValidationError(
+			"env configuration",
+			"<empty>",
+			"Environment configuration JSON cannot be empty",
+			[]string{
+				"Provide configuration via -config-json",
+				"Set OPNIX_ENV_CONFIG_JSON",
+				"Or specify a configuration file path",
+			},
+		)
+	}
+
+	return parseEnvConfig([]byte(raw))
+}
+
+func parseEnvConfig(data []byte) (*envConfig, error) {
 	var cfg envConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, errors.ConfigError(
 			"Parsing environment configuration",
-			"Invalid JSON format in environment config file",
+			"Invalid JSON format in environment configuration",
 			err,
 		)
 	}
