@@ -621,6 +621,107 @@ services.onepassword-secrets = {
 };
 ```
 
+## Development Shell Environments
+
+OpNix can resolve 1Password secrets directly into environment variables for development tooling. This is useful for `nix develop` shells, CI jobs, or local scripting where writing secrets to disk is undesirable.
+
+### Environment Configuration File
+
+Create an `opnix-env.json` file describing each environment variable you need:
+
+```json
+{
+  "vars": [
+    {
+      "name": "API_TOKEN",
+      "reference": "op://Homelab/API/token"
+    },
+    {
+      "name": "STATIC_VALUE",
+      "value": "local-dev"
+    },
+    {
+      "name": "OPTIONAL_PASSWORD",
+      "reference": "op://Services/Database/password",
+      "optional": true
+    }
+  ],
+  "format": "shell"
+}
+```
+
+#### Fields
+
+- `vars` (required): Array of environment variable definitions.
+  - `name` (required): Uppercase environment variable name.
+  - `reference`: 1Password reference in the format `op://Vault/Item/field`.
+  - `value`: Static fallback value when no reference is needed.
+  - `optional`: Skip the variable when resolution fails instead of raising an error.
+  - `preserveWhitespace`: Keep leading/trailing whitespace in the resolved value (defaults to trimming).
+- `format` (optional): Preferred output format (`shell`, `dotenv`, or `json`). Can be overridden with the CLI flag.
+
+### CLI Usage
+
+Resolve environment variables on demand:
+
+```bash
+# Print shell exports (default)
+opnix env -config opnix-env.json
+
+# Emit dotenv-compatible output
+opnix env -config opnix-env.json -format dotenv
+
+# Produce a JSON object
+opnix env -config opnix-env.json -format json
+```
+
+The command reads tokens from `OP_SERVICE_ACCOUNT_TOKEN` or `-token-file` just like `opnix secret`. Static `value` entries do not require a token.
+
+### Devshell Integration
+
+The default OpNix devshell automatically evaluates `opnix env` when an environment configuration is provided.
+
+```nix
+let
+  opnixEnvConfig =
+    pkgs.writeText "opnix-env.json"
+      (builtins.toJSON {
+        vars = [
+          { name = "API_TOKEN"; reference = "op://Homelab/DevShell API/token"; }
+          { name = "STATIC_ENV"; value = "dev"; }
+        ];
+      });
+
+  opnixEnvTokenFile =
+    let tokenPath = builtins.getEnv "OPNIX_ENV_TOKEN_FILE";
+    in if tokenPath == "" then null else tokenPath;
+in {
+  devShells.default = import ./nix/devshell.nix ({
+    inherit pkgs buildOpnix opnixEnvConfig;
+  } // pkgs.lib.optionalAttrs (opnixEnvTokenFile != null) {
+    inherit opnixEnvTokenFile;
+  });
+}
+```
+
+Runtime behaviour can be tweaked with environment variables:
+
+- `OPNIX_ENV_CONFIG`: Path to the environment config (auto-set when `opnixEnvConfig` is supplied).
+- `OPNIX_ENV_TOKEN_FILE`: Custom token path for devshell usage (defaults to `$HOME/.config/opnix/token` when unset).
+- `OPNIX_ENV_DISABLE`: Any non-empty value skips secret resolution (useful for CI or offline work).
+
+Recommended token workflow for devshells:
+
+```bash
+mkdir -p ~/.config/opnix
+opnix token -path ~/.config/opnix/token set
+chmod 600 ~/.config/opnix/token
+export OPNIX_ENV_TOKEN_FILE=$HOME/.config/opnix/token
+# or add the export to your shell profile/direnv
+```
+
+If the command succeeds, environment variables are exported via `eval` so subsequent shell commands can access them immediately. Errors are surfaced on stderr without terminating the shell.
+
 ## Validation and Assertions
 
 OpNix automatically validates your configuration and provides helpful error messages:

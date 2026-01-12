@@ -9,6 +9,7 @@ This directory contains real-world configuration examples for common OpNix use c
 - [Basic Home Manager Setup](./basic-home-manager.md) - User-level secret management
 - [Caddy Web Server](./caddy-ssl.md) - SSL certificates and reverse proxy configuration  
 - [PostgreSQL](./postgresql.md) - Database credentials and SSL certificates
+- [Development Shell Environment Variables](./devshell-env.md) - Export 1Password secrets into devshells
 
 ### More Examples Coming Soon
 We're working on expanding our example collection. Check back for more examples covering:
