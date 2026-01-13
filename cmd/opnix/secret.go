@@ -16,11 +16,24 @@ import (
 
 const defaultTokenPath = "/etc/opnix-token"
 
+type secretProcessor interface {
+	Process(*config.Config) (*secrets.ProcessResult, error)
+}
+
+type systemdManager interface {
+	ProcessSecretChanges([]config.Secret, map[string]string) error
+}
+
 type secretCommand struct {
 	fs         *flag.FlagSet
 	configFile string
 	outputDir  string
 	tokenFile  string
+
+	loadConfig       func(string) (*config.Config, error)
+	newClient        func(string) (secrets.SecretClient, error)
+	processorFactory func(secrets.SecretClient, string) secretProcessor
+	systemdFactory   func(config.SystemdIntegration) (systemdManager, error)
 }
 
 func newSecretCommand() *secretCommand {
@@ -39,6 +52,17 @@ func newSecretCommand() *secretCommand {
 		sc.fs.PrintDefaults()
 	}
 
+	sc.loadConfig = config.Load
+	sc.newClient = func(path string) (secrets.SecretClient, error) {
+		return onepass.NewClient(path)
+	}
+	sc.processorFactory = func(client secrets.SecretClient, outputDir string) secretProcessor {
+		return secrets.NewProcessor(client, outputDir)
+	}
+	sc.systemdFactory = func(cfg config.SystemdIntegration) (systemdManager, error) {
+		return systemd.NewManager(cfg)
+	}
+
 	return sc
 }
 
@@ -55,7 +79,7 @@ func (s *secretCommand) Run() error {
 	}
 
 	// Load configuration with improved error handling
-	cfg, err := config.Load(s.configFile)
+	cfg, err := s.loadConfig(s.configFile)
 	if err != nil {
 		// Error already has context from config.Load
 		return err
@@ -64,7 +88,7 @@ func (s *secretCommand) Run() error {
 	log.Printf("Loaded configuration with %d secrets", len(cfg.Secrets))
 
 	// Initialize 1Password client with validation
-	client, err := onepass.NewClient(s.tokenFile)
+	client, err := s.newClient(s.tokenFile)
 	if err != nil {
 		// Error already has context from onepass.NewClient
 		return err
@@ -73,7 +97,7 @@ func (s *secretCommand) Run() error {
 	log.Printf("Initialized 1Password client successfully")
 
 	// Process secrets with detailed progress
-	processor := secrets.NewProcessor(client, s.outputDir)
+	processor := s.processorFactory(client, s.outputDir)
 	result, err := processor.Process(cfg)
 	if err != nil {
 		// Error already has context from processor.Process
@@ -86,7 +110,7 @@ func (s *secretCommand) Run() error {
 	if cfg.SystemdIntegration.Enable {
 		log.Printf("Processing systemd integration for %d services", len(cfg.SystemdIntegration.Services))
 
-		systemdManager, err := systemd.NewManager(cfg.SystemdIntegration)
+		systemdManager, err := s.systemdFactory(cfg.SystemdIntegration)
 		if err != nil {
 			return errors.WrapWithSuggestions(
 				err,

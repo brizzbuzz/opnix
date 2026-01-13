@@ -9,6 +9,7 @@ Secure 1Password secrets integration for NixOS, nix-darwin, and Home Manager.
 - **Multi-Platform**: Full support for NixOS, nix-darwin, and Home Manager
 - **Secure**: Uses 1Password service accounts with proper file permissions
 - **Reliable**: systemd services ensure secrets are available without breaking system boot
+- **Developer Shells**: Export 1Password secrets as environment variables inside flake devshells
 
 ## Quick Start
 

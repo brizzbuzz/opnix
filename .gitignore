@@ -5,3 +5,7 @@ vendor
 .vscode
 repo_dump.txt
 opnix
+.crush
+.crush.json
+.gocache
+.nix-cache

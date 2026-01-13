@@ -149,7 +149,38 @@ services.onepassword-secrets = {
 };
 ```
 
-### Step 4: Set Up the Service Account Token
+### Step 4 (Optional): Inject Secrets into Development Shells
+
+OpNix can hydrate environment variables when you enter a `nix develop` shell. Embed the configuration directly in `flake.nix`—no extra files required:
+
+```nix
+let
+  opnixEnvConfig = {
+    vars = [
+      { name = "API_TOKEN"; reference = "op://Homelab/API/token"; }
+      { name = "OPTIONAL_SECRET"; reference = "op://Homelab/Legacy/secret"; optional = true; }
+    ];
+  };
+in {
+  devShells.default = import ./nix/devshell.nix ({
+    inherit pkgs buildOpnix opnixEnvConfig;
+  });
+}
+```
+
+When you run `nix develop`, OpNix will:
+
+- read `OP_SERVICE_ACCOUNT_TOKEN` or `OPNIX_ENV_TOKEN_FILE`
+- resolve secrets defined in the embedded configuration
+- export them into the shell (`export API_TOKEN='...'`)
+
+> **Tip:** If you rely on a token file, export `OPNIX_ENV_TOKEN_FILE=/path/to/token` before launching the devshell (or place it in your shell profile/`direnv`).
+> The devshell defaults this to `$HOME/.config/opnix/token`, so creating that file once keeps things seamless.
+> The configuration defined in Nix is passed straight to `opnix env`; no temporary files or manual exports needed.
+
+Set `OPNIX_ENV_DISABLE=1` to skip resolution (useful for offline or CI runs).
+
+### Step 5: Set Up the Service Account Token
 
 **Install OpNix** first (it will be available after rebuilding):
 
@@ -172,11 +203,16 @@ sudo opnix token set
 export OP_SERVICE_ACCOUNT_TOKEN="your-token-here"
 sudo opnix token set
 
-# Or set token with custom path
-sudo opnix token set -path /custom/path/to/token
+# Recommended for devshells: store a user-readable copy
+mkdir -p ~/.config/opnix
+sudo opnix token -path ~/.config/opnix/token set
+chmod 600 ~/.config/opnix/token
+# Make the devshell discover it automatically
+echo 'export OPNIX_ENV_TOKEN_FILE=$HOME/.config/opnix/token' >> ~/.config/opnix/env.sh
+echo 'source ~/.config/opnix/env.sh' >> ~/.bash_profile   # adjust for your shell
 ```
 
-### Step 5: Deploy Your Configuration
+### Step 6: Deploy Your Configuration
 
 **Rebuild your system:**
 
