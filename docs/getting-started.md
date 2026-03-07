@@ -258,7 +258,7 @@ ls -la ~/.config/myapp/
 ### Home Manager
 
 - Works on **any platform** (Linux, macOS, etc.)
-- Secrets stored relative to home directory
+- Relative secret paths resolve under the home directory; absolute paths are also supported
 - Runs during Home Manager activation
 - Can access system tokens or use separate token files
 

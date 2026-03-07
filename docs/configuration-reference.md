@@ -354,7 +354,7 @@ programs.onepassword-secrets = {
 - **Type**: `attrsOf homeSecretOptions`
 - **Default**: `{}`
 - **Description**: Declarative secrets for Home Manager
-- **Notes**: Paths are relative to home directory
+- **Notes**: Relative paths are resolved from the home directory; absolute paths are used as-is
 
 **Example:**
 ```nix
@@ -377,7 +377,7 @@ programs.onepassword-secrets.secrets = {
 #### `path`
 - **Type**: `nullOr str`
 - **Default**: `null`
-- **Description**: Path relative to home directory. If null, uses secret name
+- **Description**: Path for the secret file. Relative paths are resolved from the home directory; absolute paths are used as-is. If null, uses secret name
 - **Example**: `".ssh/id_rsa"`
 
 #### `owner`
