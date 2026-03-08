@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/brizzbuzz/opnix/internal/config"
@@ -317,6 +318,137 @@ func TestProcessorOwnershipValidation(t *testing.T) {
 			t.Errorf("File should exist: %v", err)
 		}
 	})
+}
+
+func TestResolveSecretPathHelpers(t *testing.T) {
+	tmpDir := t.TempDir()
+	processor := NewProcessor(&mockClient{}, tmpDir)
+	processor.defaults = map[string]string{"service": "api"}
+	processor.pathTemplate = "/run/secrets/{service}/{name}"
+
+	if got := processor.resolveSecretPath("relative/path", "secret"); got != filepath.Join(tmpDir, "relative/path") {
+		t.Fatalf("unexpected relative path: %q", got)
+	}
+	if got := processor.resolveSecretPath("/absolute/path", "secret"); got != "/absolute/path" {
+		t.Fatalf("unexpected absolute path: %q", got)
+	}
+
+	resolved, err := processor.resolveSecretPathWithTemplate(config.Secret{
+		Variables: map[string]string{"name": "token"},
+	}, "secret")
+	if err != nil {
+		t.Fatalf("expected template resolution to succeed, got %v", err)
+	}
+	if resolved != "/run/secrets/api/token" {
+		t.Fatalf("unexpected template path: %q", resolved)
+	}
+
+	resolved, err = processor.resolveSecretPathWithTemplate(config.Secret{
+		Path:      "configs/{service}.txt",
+		Variables: map[string]string{"service": "web"},
+	}, "secret")
+	if err != nil {
+		t.Fatalf("expected explicit path resolution to succeed, got %v", err)
+	}
+	if resolved != filepath.Join(tmpDir, "configs/web.txt") {
+		t.Fatalf("unexpected explicit path: %q", resolved)
+	}
+
+	processor.pathTemplate = ""
+	if _, err := processor.resolveSecretPathWithTemplate(config.Secret{}, "secret"); err == nil {
+		t.Fatal("expected error when no path or template is configured")
+	}
+}
+
+func TestValidateSecretPathAndVariables(t *testing.T) {
+	processor := NewProcessor(&mockClient{}, t.TempDir())
+
+	if err := processor.validateSecretPath(filepath.Join(t.TempDir(), "safe", "secret"), "secret"); err != nil {
+		t.Fatalf("expected safe path to validate, got %v", err)
+	}
+
+	if err := processor.validateSecretPath("../secret", "secret"); err == nil {
+		t.Fatal("expected traversal error")
+	}
+	if err := processor.validateSecretPath("/etc/passwd", "secret"); err == nil {
+		t.Fatal("expected dangerous path error")
+	}
+
+	processor.defaults = map[string]string{"service": "api"}
+	resolved, err := processor.substituteVariables("/run/{service}/{name}", map[string]string{"name": "token"}, "secret")
+	if err != nil {
+		t.Fatalf("expected substitution success, got %v", err)
+	}
+	if resolved != "/run/api/token" {
+		t.Fatalf("unexpected substitution result: %q", resolved)
+	}
+
+	if _, err := processor.substituteVariables("/run/{missing}", nil, "secret"); err == nil {
+		t.Fatal("expected missing variable error")
+	}
+	if err := processor.validateVariableValue("../bad", "name", "secret"); err == nil {
+		t.Fatal("expected variable validation error")
+	}
+}
+
+func TestProcessSecretCreatesSymlinksAndUsesTemplateConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	client := &mockClient{secrets: map[string]string{"op://vault/item/field": "templated-secret"}}
+	processor := NewProcessorWithConfig(client, tmpDir, "services/{service}/{name}", map[string]string{"service": "api"})
+
+	result, err := processor.Process(&config.Config{
+		PathTemplate: "services/{service}/{name}",
+		Defaults:     map[string]string{"service": "api"},
+		Secrets: []config.Secret{
+			{
+				Reference: "op://vault/item/field",
+				Variables: map[string]string{"name": "token"},
+				Symlinks:  []string{filepath.Join(tmpDir, "links", "token")},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected process success, got %v", err)
+	}
+
+	if result.ProcessedCount != 1 {
+		t.Fatalf("expected one processed secret, got %d", result.ProcessedCount)
+	}
+
+	targetPath := filepath.Join(tmpDir, "services", "api", "token")
+	content, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("expected target file, got %v", err)
+	}
+	if string(content) != "templated-secret" {
+		t.Fatalf("unexpected content: %q", string(content))
+	}
+
+	symlinkPath := filepath.Join(tmpDir, "links", "token")
+	linkTarget, err := os.Readlink(symlinkPath)
+	if err != nil {
+		t.Fatalf("expected symlink, got %v", err)
+	}
+	if linkTarget != targetPath {
+		t.Fatalf("unexpected symlink target: %q", linkTarget)
+	}
+}
+
+func TestProcessSecretErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	processor := NewProcessor(&mockClient{}, tmpDir)
+
+	_, err := processor.processSecret(config.Secret{Reference: "op://missing/item/field", Path: "missing"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "Failed to resolve") {
+		t.Fatalf("expected resolve error, got %v", err)
+	}
+
+	client := &mockClient{secrets: map[string]string{"op://vault/item/field": "value"}}
+	processor = NewProcessor(client, tmpDir)
+	_, err = processor.processSecret(config.Secret{Reference: "op://vault/item/field", Path: "/etc/passwd"}, "secret")
+	if err == nil {
+		t.Fatal("expected invalid path error")
+	}
 }
 
 // Helper function to check if string contains substring

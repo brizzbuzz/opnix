@@ -524,6 +524,147 @@ func TestValidator_ValidateTokenFile(t *testing.T) {
 	}
 }
 
+func TestValidator_ResolvePathAndSubstituteVariables(t *testing.T) {
+	validator := NewValidator()
+
+	t.Run("explicit path with variables", func(t *testing.T) {
+		path, err := validator.resolvePath(
+			"/run/secrets/{service}/{name}",
+			"",
+			map[string]string{"name": "token"},
+			map[string]string{"service": "api"},
+			"secret[0]",
+		)
+		if err != nil {
+			t.Fatalf("expected success, got %v", err)
+		}
+		if path != "/run/secrets/api/token" {
+			t.Fatalf("unexpected resolved path: %q", path)
+		}
+	})
+
+	t.Run("template path with variables", func(t *testing.T) {
+		path, err := validator.resolvePath(
+			"",
+			"/run/secrets/{service}/{name}",
+			map[string]string{"name": "db"},
+			map[string]string{"service": "postgres"},
+			"secret[0]",
+		)
+		if err != nil {
+			t.Fatalf("expected success, got %v", err)
+		}
+		if path != "/run/secrets/postgres/db" {
+			t.Fatalf("unexpected resolved path: %q", path)
+		}
+	})
+
+	t.Run("missing template and path", func(t *testing.T) {
+		_, err := validator.resolvePath("", "", nil, nil, "secret[0]")
+		if err == nil {
+			t.Fatal("expected missing path error")
+		}
+		if !containsString(err.Error(), "no pathTemplate") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("missing variable", func(t *testing.T) {
+		_, err := validator.substituteVariables(
+			"/run/{service}/{name}",
+			map[string]string{"service": "api"},
+			nil,
+			"secret[0]",
+		)
+		if err == nil {
+			t.Fatal("expected missing variable error")
+		}
+		if !containsString(err.Error(), "Template variable '{name}' not found") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("dangerous variable value", func(t *testing.T) {
+		_, err := validator.substituteVariables(
+			"/run/{service}",
+			map[string]string{"service": "bad;rm"},
+			nil,
+			"secret[0]",
+		)
+		if err == nil {
+			t.Fatal("expected dangerous variable error")
+		}
+		if !containsString(err.Error(), "potentially dangerous character") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestValidator_ValidateSecret(t *testing.T) {
+	validator := NewValidator()
+
+	t.Run("valid templated secret", func(t *testing.T) {
+		seenPaths := make(map[string]string)
+		err := validator.validateSecret(SecretData{
+			Reference:    "op://Vault/Item/field",
+			PathTemplate: "/run/secrets/{service}/{name}",
+			Variables: map[string]string{
+				"service": "api",
+				"name":    "token",
+			},
+			Symlinks: []string{"/var/lib/app/token-link"},
+			Owner:    "root",
+			Group:    "root",
+			Mode:     "0600",
+		}, "secret[0]", seenPaths)
+		if err != nil {
+			t.Fatalf("expected success, got %v", err)
+		}
+	})
+
+	t.Run("duplicate symlink path", func(t *testing.T) {
+		seenPaths := map[string]string{"/var/lib/app/token-link": "secret[0] (symlink)"}
+		err := validator.validateSecret(SecretData{
+			Reference: "op://Vault/Item/field",
+			Path:      "/run/secrets/token",
+			Symlinks:  []string{"/var/lib/app/token-link"},
+			Owner:     "root",
+			Group:     "root",
+			Mode:      "0600",
+		}, "secret[1]", seenPaths)
+		if err == nil {
+			t.Fatal("expected duplicate symlink error")
+		}
+		if !containsString(err.Error(), "Duplicate symlink path") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("invalid ownership", func(t *testing.T) {
+		seenPaths := make(map[string]string)
+		err := validator.validateSecret(SecretData{
+			Reference: "op://Vault/Item/field",
+			Path:      "/run/secrets/token",
+			Owner:     "nonexistent-user-12345",
+			Mode:      "0600",
+		}, "secret[0]", seenPaths)
+		if err == nil {
+			t.Fatal("expected ownership error")
+		}
+	})
+}
+
+func TestValidator_ValidateOwnership(t *testing.T) {
+	validator := NewValidator()
+
+	if err := validator.validateOwnership("", "", "secret[0]"); err != nil {
+		t.Fatalf("expected empty ownership to be allowed, got %v", err)
+	}
+	if err := validator.validateOwnership("root", "root", "secret[0]"); err != nil {
+		t.Fatalf("expected root ownership to validate, got %v", err)
+	}
+}
+
 func TestValidator_GetAvailableUsers(t *testing.T) {
 	validator := NewValidator()
 	users := validator.getAvailableUsers()

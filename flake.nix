@@ -4,11 +4,16 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    home-manager = {
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
     nixpkgs,
     flake-utils,
+    home-manager,
     ...
   }:
     flake-utils.lib.eachDefaultSystem (system: let
@@ -29,7 +34,9 @@
       };
 
       checks =
-        import ./nix/checks.nix {inherit pkgs src;}
+        import ./nix/checks.nix {
+          inherit home-manager pkgs src;
+        }
         // {
           build = buildOpnix;
         };

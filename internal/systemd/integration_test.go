@@ -4,11 +4,23 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/brizzbuzz/opnix/internal/config"
 )
+
+func writeFakeSystemctl(t *testing.T, body string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "systemctl")
+	if err := os.WriteFile(path, []byte(body), 0755); err != nil {
+		t.Fatalf("failed to write fake systemctl: %v", err)
+	}
+	return path
+}
 
 // mockSystemdIntegration creates a test systemd integration config
 func mockSystemdIntegration() config.SystemdIntegration {
@@ -49,6 +61,23 @@ func TestNewManager(t *testing.T) {
 
 	if len(manager.config.Services) != len(cfg.Services) {
 		t.Errorf("Expected %d services, got %d", len(cfg.Services), len(manager.config.Services))
+	}
+}
+
+func TestNewManagerWithoutChangeDetection(t *testing.T) {
+	t.Setenv("PATH", filepath.Dir(writeFakeSystemctl(t, "#!/bin/sh\nexit 0\n")))
+
+	manager, err := NewManager(config.SystemdIntegration{
+		Enable: true,
+		ChangeDetection: config.ChangeDetection{
+			Enable: false,
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected manager creation, got %v", err)
+	}
+	if manager.hashStore != nil {
+		t.Fatal("expected no hash store when change detection is disabled")
 	}
 }
 
@@ -490,4 +519,192 @@ func TestCalculateHash(t *testing.T) {
 	if hash1 == hash3 {
 		t.Error("Expected different hash after file modification")
 	}
+}
+
+func TestProcessServiceActions_DeduplicatesAndPrefersRestart(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "actions.log")
+	systemctlPath := writeFakeSystemctl(t, "#!/bin/sh\nprintf '%s %s\\n' \"$1\" \"$2\" >> \""+logPath+"\"\n")
+
+	manager := &Manager{
+		config: config.SystemdIntegration{
+			Enable: true,
+			ErrorHandling: config.ErrorHandling{
+				ContinueOnError: false,
+				MaxRetries:      1,
+			},
+		},
+		systemctl: systemctlPath,
+	}
+
+	err := manager.processServiceActions([]ServiceAction{
+		{Name: "web", Restart: false},
+		{Name: "web", Restart: true},
+		{Name: "worker", Restart: false},
+	})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("failed to read action log: %v", err)
+	}
+	lines := strings.Fields(strings.TrimSpace(string(data)))
+	joined := string(data)
+	if strings.Count(joined, "web") != 1 {
+		t.Fatalf("expected one action for web, got log %q", joined)
+	}
+	if !strings.Contains(joined, "restart web") {
+		t.Fatalf("expected restart for web, got %q", joined)
+	}
+	if !strings.Contains(joined, "reload worker") {
+		t.Fatalf("expected reload for worker, got %q", joined)
+	}
+	if len(lines) == 0 {
+		t.Fatal("expected logged commands")
+	}
+}
+
+func TestIsServiceRunningAndValidateServices(t *testing.T) {
+	systemctlPath := writeFakeSystemctl(t, `#!/bin/sh
+if [ "$1" = "is-active" ] && [ "$3" = "active.service" ]; then
+  exit 0
+fi
+if [ "$1" = "is-active" ] && [ "$3" = "inactive.service" ]; then
+  exit 3
+fi
+if [ "$1" = "cat" ] && [ "$2" = "present.service" ]; then
+  exit 0
+fi
+exit 1
+`)
+
+	manager := &Manager{
+		config: config.SystemdIntegration{
+			Enable: true,
+		},
+		systemctl: systemctlPath,
+	}
+
+	running, err := manager.IsServiceRunning("active.service")
+	if err != nil || !running {
+		t.Fatalf("expected active.service to be running, got running=%v err=%v", running, err)
+	}
+
+	running, err = manager.IsServiceRunning("inactive.service")
+	if err != nil || running {
+		t.Fatalf("expected inactive.service to be inactive, got running=%v err=%v", running, err)
+	}
+
+	if _, err := manager.IsServiceRunning("broken.service"); err == nil {
+		t.Fatal("expected error for broken.service")
+	}
+
+	if err := manager.ValidateServices([]string{"present.service"}); err != nil {
+		t.Fatalf("expected ValidateServices success, got %v", err)
+	}
+
+	if err := manager.ValidateServices([]string{"missing.service"}); err == nil {
+		t.Fatal("expected ValidateServices error for missing service")
+	}
+}
+
+func TestProcessSecretChangesDisabled(t *testing.T) {
+	manager := &Manager{config: config.SystemdIntegration{Enable: false}}
+	if err := manager.ProcessSecretChanges([]config.Secret{{Path: "ignored"}}, nil); err != nil {
+		t.Fatalf("expected no error when integration disabled, got %v", err)
+	}
+}
+
+func TestProcessSecretChangesErrorPaths(t *testing.T) {
+	t.Run("extract service action error", func(t *testing.T) {
+		manager := &Manager{
+			config: config.SystemdIntegration{
+				Enable: true,
+				ErrorHandling: config.ErrorHandling{
+					ContinueOnError: false,
+					MaxRetries:      1,
+				},
+				ChangeDetection: config.ChangeDetection{Enable: false},
+			},
+			dryRun:    true,
+			systemctl: "/bin/true",
+		}
+
+		err := manager.ProcessSecretChanges([]config.Secret{{
+			Path:      "/tmp/secret",
+			Reference: "op://vault/item/field",
+			Services:  "bad-type",
+		}}, map[string]string{})
+		if err == nil {
+			t.Fatal("expected error for invalid services type")
+		}
+	})
+
+	t.Run("hash detection error with continue", func(t *testing.T) {
+		hashFile := filepath.Join(t.TempDir(), "hashes.json")
+		store, err := NewHashStore(hashFile)
+		if err != nil {
+			t.Fatalf("failed to create hash store: %v", err)
+		}
+
+		manager := &Manager{
+			config: config.SystemdIntegration{
+				Enable: true,
+				ErrorHandling: config.ErrorHandling{
+					ContinueOnError: true,
+					MaxRetries:      1,
+				},
+				ChangeDetection: config.ChangeDetection{Enable: true, HashFile: hashFile},
+			},
+			hashStore: store,
+			dryRun:    true,
+			systemctl: "/bin/true",
+		}
+
+		err = manager.ProcessSecretChanges([]config.Secret{{
+			Path:      "/tmp/nonexistent-secret",
+			Reference: "op://vault/item/field",
+			Services:  []interface{}{"svc"},
+		}}, map[string]string{})
+		if err != nil {
+			t.Fatalf("expected continue-on-error to suppress hash error, got %v", err)
+		}
+	})
+}
+
+func TestExecuteServiceActionRetryAndSignal(t *testing.T) {
+	t.Run("retries until success", func(t *testing.T) {
+		dir := t.TempDir()
+		counterPath := filepath.Join(dir, "counter")
+		systemctlPath := writeFakeSystemctl(t, "#!/bin/sh\ncount=0\nif [ -f \""+counterPath+"\" ]; then count=$(cat \""+counterPath+"\"); fi\ncount=$((count+1))\nprintf '%s' \"$count\" > \""+counterPath+"\"\nif [ \"$count\" -lt 2 ]; then exit 1; fi\nexit 0\n")
+
+		manager := &Manager{
+			config: config.SystemdIntegration{
+				Enable:        true,
+				ErrorHandling: config.ErrorHandling{MaxRetries: 2},
+			},
+			systemctl: systemctlPath,
+		}
+
+		if err := manager.executeServiceAction(ServiceAction{Name: "svc", Restart: true}); err != nil {
+			t.Fatalf("expected retry success, got %v", err)
+		}
+
+		count, err := os.ReadFile(counterPath)
+		if err != nil {
+			t.Fatalf("failed to read counter: %v", err)
+		}
+		if strings.TrimSpace(string(count)) != "2" {
+			t.Fatalf("expected two attempts, got %q", string(count))
+		}
+	})
+
+	t.Run("signal uses kill command in dry run", func(t *testing.T) {
+		manager := &Manager{config: config.SystemdIntegration{Enable: true, ErrorHandling: config.ErrorHandling{MaxRetries: 1}}}
+		manager.SetDryRun(true)
+		if err := manager.executeServiceAction(ServiceAction{Name: "svc", Signal: "SIGHUP"}); err != nil {
+			t.Fatalf("expected dry-run signal success, got %v", err)
+		}
+	})
 }

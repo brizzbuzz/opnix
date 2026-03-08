@@ -4,7 +4,7 @@ vendor
 .idea
 .vscode
 repo_dump.txt
-opnix
+/opnix
 .crush
 .crush.json
 .gocache
