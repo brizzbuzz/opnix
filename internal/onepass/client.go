@@ -5,14 +5,40 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/1password/onepassword-sdk-go"
 	"github.com/brizzbuzz/opnix/internal/errors"
 )
 
-type Client struct {
-	client *onepassword.Client
+const (
+	defaultInitAttempts    = 3
+	defaultResolveAttempts = 3
+)
+
+type sdkSecretsAPI interface {
+	Resolve(context.Context, string) (string, error)
 }
+
+type Client struct {
+	secrets sdkSecretsAPI
+}
+
+var (
+	newSDKSecrets = func(ctx context.Context, token string) (sdkSecretsAPI, error) {
+		client, err := onepassword.NewClient(
+			ctx,
+			onepassword.WithServiceAccountToken(token),
+			onepassword.WithIntegrationInfo("NixOS Secrets Integration", "v1.0.0"),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		return client.Secrets(), nil
+	}
+	retrySleep = time.Sleep
+)
 
 // GetToken retrieves token from environment or file
 func GetToken(tokenFile string) (string, error) {
@@ -55,11 +81,9 @@ func NewClient(tokenFile string) (*Client, error) {
 		return nil, err
 	}
 
-	client, err := onepassword.NewClient(
-		context.Background(),
-		onepassword.WithServiceAccountToken(token),
-		onepassword.WithIntegrationInfo("NixOS Secrets Integration", "v1.0.0"),
-	)
+	secretsAPI, err := retryOperation(defaultInitAttempts, "Initializing 1Password client", func() (sdkSecretsAPI, error) {
+		return newSDKSecrets(context.Background(), token)
+	})
 	if err != nil {
 		return nil, errors.OnePasswordError(
 			"Initializing 1Password client",
@@ -68,11 +92,13 @@ func NewClient(tokenFile string) (*Client, error) {
 		)
 	}
 
-	return &Client{client: client}, nil
+	return &Client{secrets: secretsAPI}, nil
 }
 
 func (c *Client) ResolveSecret(reference string) (string, error) {
-	secret, err := c.client.Secrets().Resolve(context.Background(), reference)
+	secret, err := retryOperation(defaultResolveAttempts, fmt.Sprintf("Resolving 1Password reference %s", reference), func() (string, error) {
+		return c.secrets.Resolve(context.Background(), reference)
+	})
 	if err != nil {
 		return "", errors.OnePasswordError(
 			"Resolving 1Password secret",
@@ -81,4 +107,26 @@ func (c *Client) ResolveSecret(reference string) (string, error) {
 		)
 	}
 	return secret, nil
+}
+
+func retryOperation[T any](attempts int, operation string, fn func() (T, error)) (T, error) {
+	var zero T
+	var lastErr error
+
+	for attempt := 1; attempt <= attempts; attempt++ {
+		value, err := fn()
+		if err == nil {
+			return value, nil
+		}
+
+		lastErr = err
+		if attempt == attempts {
+			break
+		}
+
+		fmt.Fprintf(os.Stderr, "WARNING: %s attempt %d/%d failed: %v\n", operation, attempt, attempts, err)
+		retrySleep(time.Duration(attempt) * time.Second)
+	}
+
+	return zero, fmt.Errorf("%s failed after %d attempts: %w", operation, attempts, lastErr)
 }

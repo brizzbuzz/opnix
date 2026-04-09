@@ -390,8 +390,8 @@ in {
           systemd.services.opnix-secrets = {
             description = "OpNix Secret Management";
             wantedBy = ["multi-user.target"];
-            after = ["network.target"];
-            wants = ["network.target"];
+            after = ["network-online.target" "nss-lookup.target"];
+            wants = ["network-online.target" "nss-lookup.target"];
 
             serviceConfig = {
               Type = "oneshot";

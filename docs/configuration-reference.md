@@ -254,7 +254,7 @@ When using advanced service configuration (NixOS only), each service supports:
 
 #### `systemdIntegration`
 - **Type**: `systemdIntegrationOptions`
-- **Default**: `{}`
+- **Default**: `{ enable = true; }`
 - **Description**: Advanced systemd integration configuration
 
 **Example:**
@@ -272,7 +272,7 @@ services.onepassword-secrets.systemdIntegration = {
 
 #### `enable`
 - **Type**: `bool`
-- **Default**: `false`
+- **Default**: `true`
 - **Description**: Enable advanced systemd integration features
 
 #### `services`
@@ -298,7 +298,7 @@ services.onepassword-secrets.systemdIntegration = {
 
 ##### `changeDetection.hashFile`
 - **Type**: `str`
-- **Default**: `"/var/lib/opnix/secret-hashes"`
+- **Default**: `"/var/lib/opnix/secret-hashes.json"`
 - **Description**: File to store secret content hashes for change detection
 
 #### `errorHandling`
