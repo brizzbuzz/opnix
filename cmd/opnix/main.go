@@ -54,7 +54,7 @@ func run(args []string, cmds []command) int {
 			}
 			if err := cmd.Run(); err != nil {
 				handleError(err)
-				return 1
+				return errors.ExitCode(err)
 			}
 			return 0
 		}

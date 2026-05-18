@@ -2,6 +2,7 @@ package onepass
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"os"
 	"strings"
@@ -18,6 +19,7 @@ const (
 
 type sdkSecretsAPI interface {
 	Resolve(context.Context, string) (string, error)
+	ResolveAll(context.Context, []string) (onepassword.ResolveAllResponse, error)
 }
 
 type Client struct {
@@ -96,20 +98,62 @@ func NewClient(tokenFile string) (*Client, error) {
 }
 
 func (c *Client) ResolveSecret(reference string) (string, error) {
-	secret, err := retryOperation(defaultResolveAttempts, fmt.Sprintf("Resolving 1Password reference %s", reference), func() (string, error) {
-		return c.secrets.Resolve(context.Background(), reference)
-	})
+	secrets, err := c.ResolveSecrets([]string{reference})
 	if err != nil {
-		return "", errors.OnePasswordError(
-			"Resolving 1Password secret",
-			fmt.Sprintf("Failed to resolve reference: %s", reference),
-			err,
-		)
+		return "", err
 	}
-	return secret, nil
+	return secrets[reference], nil
 }
 
-func retryOperation[T any](attempts int, operation string, fn func() (T, error)) (T, error) {
+func (c *Client) ResolveSecrets(references []string) (map[string]string, error) {
+	response, err := retryOperation(defaultResolveAttempts, "Resolving 1Password references", func() (onepassword.ResolveAllResponse, error) {
+		return c.secrets.ResolveAll(context.Background(), references)
+	}, shouldRetryProviderError)
+	if err != nil {
+		return nil, errors.OnePasswordError(
+			"Resolving 1Password secrets",
+			"Failed to resolve 1Password references",
+			classifyTopLevelProviderError(err),
+		)
+	}
+
+	resolved := make(map[string]string, len(references))
+	var failures []*errors.ProviderError
+	for _, reference := range references {
+		individual, ok := response.IndividualResponses[reference]
+		if !ok {
+			failures = append(failures, &errors.ProviderError{
+				Kind:      errors.ProviderErrorOther,
+				Reference: reference,
+				Issue:     "1Password did not return a result for this reference",
+			})
+			continue
+		}
+
+		if individual.Error != nil {
+			failures = append(failures, classifyResolveReferenceError(reference, *individual.Error))
+			continue
+		}
+		if individual.Content == nil {
+			failures = append(failures, &errors.ProviderError{
+				Kind:      errors.ProviderErrorOther,
+				Reference: reference,
+				Issue:     "1Password returned an empty result for this reference",
+			})
+			continue
+		}
+
+		resolved[reference] = individual.Content.Secret
+	}
+
+	if len(failures) > 0 {
+		return nil, &errors.ProviderResolutionError{Failures: failures}
+	}
+
+	return resolved, nil
+}
+
+func retryOperation[T any](attempts int, operation string, fn func() (T, error), shouldRetry ...func(error) bool) (T, error) {
 	var zero T
 	var lastErr error
 
@@ -120,6 +164,9 @@ func retryOperation[T any](attempts int, operation string, fn func() (T, error))
 		}
 
 		lastErr = err
+		if len(shouldRetry) > 0 && !shouldRetry[0](err) {
+			break
+		}
 		if attempt == attempts {
 			break
 		}
@@ -129,4 +176,43 @@ func retryOperation[T any](attempts int, operation string, fn func() (T, error))
 	}
 
 	return zero, fmt.Errorf("%s failed after %d attempts: %w", operation, attempts, lastErr)
+}
+
+func shouldRetryProviderError(err error) bool {
+	var rateLimited *onepassword.RateLimitExceededError
+	return !stderrors.As(err, &rateLimited)
+}
+
+func classifyTopLevelProviderError(err error) error {
+	var rateLimited *onepassword.RateLimitExceededError
+	if stderrors.As(err, &rateLimited) {
+		return &errors.ProviderResolutionError{Failures: []*errors.ProviderError{{
+			Kind:  errors.ProviderErrorRateLimited,
+			Issue: "1Password rate limit exceeded; wait for the provider reset window before retrying",
+			Cause: err,
+		}}}
+	}
+	return &errors.ProviderResolutionError{Failures: []*errors.ProviderError{{
+		Kind:  errors.ProviderErrorTransient,
+		Issue: err.Error(),
+		Cause: err,
+	}}}
+}
+
+func classifyResolveReferenceError(reference string, err onepassword.ResolveReferenceError) *errors.ProviderError {
+	switch err.Type {
+	case onepassword.ResolveReferenceErrorTypeVariantVaultNotFound,
+		onepassword.ResolveReferenceErrorTypeVariantItemNotFound,
+		onepassword.ResolveReferenceErrorTypeVariantFieldNotFound,
+		onepassword.ResolveReferenceErrorTypeVariantNoMatchingSections:
+		return &errors.ProviderError{Kind: errors.ProviderErrorMissingReference, Reference: reference, Issue: string(err.Type)}
+	case onepassword.ResolveReferenceErrorTypeVariantParsing:
+		return &errors.ProviderError{Kind: errors.ProviderErrorInvalidReference, Reference: reference, Issue: string(err.Parsing())}
+	case onepassword.ResolveReferenceErrorTypeVariantTooManyVaults,
+		onepassword.ResolveReferenceErrorTypeVariantTooManyItems,
+		onepassword.ResolveReferenceErrorTypeVariantTooManyMatchingFields:
+		return &errors.ProviderError{Kind: errors.ProviderErrorAmbiguousReference, Reference: reference, Issue: string(err.Type)}
+	default:
+		return &errors.ProviderError{Kind: errors.ProviderErrorOther, Reference: reference, Issue: string(err.Type)}
+	}
 }

@@ -5,6 +5,113 @@ import (
 	"strings"
 )
 
+const (
+	ExitCodeGeneral          = 1
+	ExitCodeMissingReference = 65
+	ExitCodeRateLimited      = 75
+)
+
+type ProviderErrorKind string
+
+const (
+	ProviderErrorMissingReference   ProviderErrorKind = "missing_reference"
+	ProviderErrorInvalidReference   ProviderErrorKind = "invalid_reference"
+	ProviderErrorAmbiguousReference ProviderErrorKind = "ambiguous_reference"
+	ProviderErrorRateLimited        ProviderErrorKind = "rate_limited"
+	ProviderErrorTransient          ProviderErrorKind = "transient"
+	ProviderErrorOther              ProviderErrorKind = "other"
+)
+
+type exitCoder interface {
+	ExitCode() int
+}
+
+// ProviderError describes a classified provider lookup failure.
+type ProviderError struct {
+	Kind      ProviderErrorKind
+	Reference string
+	Issue     string
+	Cause     error
+}
+
+func (e *ProviderError) Error() string {
+	if e.Reference == "" {
+		return fmt.Sprintf("%s: %s", e.Kind, e.Issue)
+	}
+	return fmt.Sprintf("%s for %s: %s", e.Kind, e.Reference, e.Issue)
+}
+
+func (e *ProviderError) Unwrap() error {
+	return e.Cause
+}
+
+func (e *ProviderError) ExitCode() int {
+	switch e.Kind {
+	case ProviderErrorRateLimited:
+		return ExitCodeRateLimited
+	case ProviderErrorMissingReference, ProviderErrorInvalidReference, ProviderErrorAmbiguousReference:
+		return ExitCodeMissingReference
+	default:
+		return ExitCodeGeneral
+	}
+}
+
+// ProviderResolutionError summarizes one or more provider lookup failures.
+type ProviderResolutionError struct {
+	Failures []*ProviderError
+}
+
+func (e *ProviderResolutionError) Error() string {
+	counts := map[ProviderErrorKind]int{}
+	for _, failure := range e.Failures {
+		counts[failure.Kind]++
+	}
+
+	parts := []string{
+		"provider resolution failed",
+		fmt.Sprintf("missing references: %d", counts[ProviderErrorMissingReference]),
+		fmt.Sprintf("invalid references: %d", counts[ProviderErrorInvalidReference]),
+		fmt.Sprintf("ambiguous references: %d", counts[ProviderErrorAmbiguousReference]),
+		fmt.Sprintf("rate limited: %d", counts[ProviderErrorRateLimited]),
+		fmt.Sprintf("transient failures: %d", counts[ProviderErrorTransient]),
+		fmt.Sprintf("other failures: %d", counts[ProviderErrorOther]),
+	}
+
+	for _, failure := range e.Failures {
+		parts = append(parts, fmt.Sprintf("  - %s", failure.Error()))
+	}
+
+	return strings.Join(parts, "\n")
+}
+
+func (e *ProviderResolutionError) ExitCode() int {
+	code := ExitCodeGeneral
+	for _, failure := range e.Failures {
+		failureCode := failure.ExitCode()
+		if failureCode == ExitCodeRateLimited {
+			return failureCode
+		}
+		if failureCode == ExitCodeMissingReference {
+			code = failureCode
+		}
+	}
+	return code
+}
+
+func ExitCode(err error) int {
+	for err != nil {
+		if coder, ok := err.(exitCoder); ok {
+			return coder.ExitCode()
+		}
+		unwrapper, ok := err.(interface{ Unwrap() error })
+		if !ok {
+			break
+		}
+		err = unwrapper.Unwrap()
+	}
+	return ExitCodeGeneral
+}
+
 // OpnixError represents a structured error with context and suggestions
 type OpnixError struct {
 	Operation   string   // What operation was being performed

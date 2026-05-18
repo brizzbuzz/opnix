@@ -2,19 +2,40 @@ package onepass
 
 import (
 	"context"
-	"errors"
+	stderrors "errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/1password/onepassword-sdk-go"
+	opnixerrors "github.com/brizzbuzz/opnix/internal/errors"
 )
 
 type fakeSecretsAPI struct {
-	resolve func(context.Context, string) (string, error)
+	resolve    func(context.Context, string) (string, error)
+	resolveAll func(context.Context, []string) (onepassword.ResolveAllResponse, error)
 }
 
 func (f fakeSecretsAPI) Resolve(ctx context.Context, reference string) (string, error) {
 	return f.resolve(ctx, reference)
+}
+
+func (f fakeSecretsAPI) ResolveAll(ctx context.Context, references []string) (onepassword.ResolveAllResponse, error) {
+	if f.resolveAll != nil {
+		return f.resolveAll(ctx, references)
+	}
+	responses := make(map[string]onepassword.Response[onepassword.ResolvedReference, onepassword.ResolveReferenceError], len(references))
+	for _, reference := range references {
+		secret, err := f.resolve(ctx, reference)
+		if err != nil {
+			return onepassword.ResolveAllResponse{}, err
+		}
+		responses[reference] = onepassword.Response[onepassword.ResolvedReference, onepassword.ResolveReferenceError]{
+			Content: &onepassword.ResolvedReference{Secret: secret},
+		}
+	}
+	return onepassword.ResolveAllResponse{IndividualResponses: responses}, nil
 }
 
 func TestGetToken(t *testing.T) {
@@ -90,7 +111,7 @@ func TestNewClientRetriesTransientInitializationFailures(t *testing.T) {
 			t.Fatalf("expected token to be passed through")
 		}
 		if attempts < 3 {
-			return nil, errors.New("transient auth failure")
+			return nil, stderrors.New("transient auth failure")
 		}
 		return fakeSecretsAPI{resolve: func(_ context.Context, reference string) (string, error) {
 			return "resolved:" + reference, nil
@@ -132,7 +153,7 @@ func TestResolveSecretRetriesTransientFailures(t *testing.T) {
 				t.Fatalf("unexpected reference %q", reference)
 			}
 			if attempts < 3 {
-				return "", errors.New("temporary network failure")
+				return "", stderrors.New("temporary network failure")
 			}
 			return "secret-value", nil
 		}},
@@ -149,5 +170,38 @@ func TestResolveSecretRetriesTransientFailures(t *testing.T) {
 
 	if secret != "secret-value" {
 		t.Fatalf("unexpected secret value %q", secret)
+	}
+}
+
+func TestResolveSecretDoesNotRetryMissingReference(t *testing.T) {
+	originalRetrySleep := retrySleep
+	t.Cleanup(func() {
+		retrySleep = originalRetrySleep
+	})
+
+	retrySleep = func(_ time.Duration) {}
+
+	attempts := 0
+	client := &Client{
+		secrets: fakeSecretsAPI{resolveAll: func(_ context.Context, references []string) (onepassword.ResolveAllResponse, error) {
+			attempts++
+			missing := onepassword.NewResolveReferenceErrorTypeVariantItemNotFound()
+			return onepassword.ResolveAllResponse{IndividualResponses: map[string]onepassword.Response[onepassword.ResolvedReference, onepassword.ResolveReferenceError]{
+				references[0]: {Error: &missing},
+			}}, nil
+		}},
+	}
+
+	_, err := client.ResolveSecret("op://vault/missing/field")
+	if err == nil {
+		t.Fatal("expected missing reference error")
+	}
+
+	if attempts != 1 {
+		t.Fatalf("expected missing reference to be resolved once, got %d attempts", attempts)
+	}
+
+	if code := opnixerrors.ExitCode(err); code != opnixerrors.ExitCodeMissingReference {
+		t.Fatalf("expected exit code %d, got %d", opnixerrors.ExitCodeMissingReference, code)
 	}
 }

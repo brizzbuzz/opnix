@@ -12,14 +12,30 @@ import (
 
 // Mock client for testing
 type mockClient struct {
-	secrets map[string]string
+	secrets      map[string]string
+	resolveCalls map[string]int
 }
 
 func (m *mockClient) ResolveSecret(reference string) (string, error) {
+	if m.resolveCalls != nil {
+		m.resolveCalls[reference]++
+	}
 	if value, ok := m.secrets[reference]; ok {
 		return value, nil
 	}
 	return "", fmt.Errorf("secret not found")
+}
+
+func (m *mockClient) ResolveSecrets(references []string) (map[string]string, error) {
+	resolved := make(map[string]string, len(references))
+	for _, reference := range references {
+		value, err := m.ResolveSecret(reference)
+		if err != nil {
+			return nil, err
+		}
+		resolved[reference] = value
+	}
+	return resolved, nil
 }
 
 func TestProcessor(t *testing.T) {
@@ -73,6 +89,40 @@ func TestProcessor(t *testing.T) {
 
 	if string(content) != "test-secret-value" {
 		t.Errorf("Expected secret value test-secret-value, got %s", string(content))
+	}
+}
+
+func TestProcessorResolvesDuplicateReferencesOnce(t *testing.T) {
+	mock := &mockClient{
+		secrets: map[string]string{
+			"op://vault/shared/field": "shared-secret-value",
+		},
+		resolveCalls: map[string]int{},
+	}
+
+	tmpDir, err := os.MkdirTemp("", "opnix-processor-duplicate-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	processor := NewProcessor(mock, tmpDir)
+	cfg := &config.Config{Secrets: []config.Secret{
+		{Path: "first", Reference: "op://vault/shared/field"},
+		{Path: "second", Reference: "op://vault/shared/field"},
+	}}
+
+	result, err := processor.Process(cfg)
+	if err != nil {
+		t.Fatalf("Failed to process duplicate references: %v", err)
+	}
+
+	if result.ProcessedCount != 2 {
+		t.Fatalf("Expected 2 processed secrets, got %d", result.ProcessedCount)
+	}
+
+	if got := mock.resolveCalls["op://vault/shared/field"]; got != 1 {
+		t.Fatalf("Expected duplicate reference to be resolved once, got %d", got)
 	}
 }
 

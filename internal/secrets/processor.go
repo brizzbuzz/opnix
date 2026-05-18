@@ -15,6 +15,7 @@ import (
 
 type SecretClient interface {
 	ResolveSecret(reference string) (string, error)
+	ResolveSecrets(references []string) (map[string]string, error)
 }
 
 type ProcessResult struct {
@@ -68,9 +69,33 @@ func (p *Processor) Process(cfg *config.Config) (*ProcessResult, error) {
 		ProcessedCount: 0,
 	}
 
+	references := uniqueReferences(cfg.Secrets)
+	resolvedSecrets, err := p.client.ResolveSecrets(references)
+	if err != nil {
+		return nil, errors.WrapWithSuggestions(
+			err,
+			"Resolving 1Password references",
+			"secret processing",
+			[]string{
+				"Check the failed 1Password references listed above",
+				"Create any missing vaults, items, or fields before restarting opnix-secrets.service",
+				"If rate-limited, wait for the 1Password reset window before retrying",
+			},
+		)
+	}
+
 	for i, secret := range cfg.Secrets {
 		secretName := fmt.Sprintf("secret[%d]:%s", i, secret.Path)
-		outputPath, err := p.processSecret(secret, secretName)
+		value, ok := resolvedSecrets[secret.Reference]
+		if !ok {
+			return nil, errors.OnePasswordError(
+				fmt.Sprintf("Resolving secret %s", secretName),
+				fmt.Sprintf("Failed to resolve 1Password reference: %s", secret.Reference),
+				nil,
+			)
+		}
+
+		outputPath, err := p.processSecret(secret, secretName, value)
 		if err != nil {
 			return nil, errors.WrapWithSuggestions(
 				err,
@@ -91,17 +116,7 @@ func (p *Processor) Process(cfg *config.Config) (*ProcessResult, error) {
 	return result, nil
 }
 
-func (p *Processor) processSecret(secret config.Secret, secretName string) (string, error) {
-	// Resolve the secret value from 1Password
-	value, err := p.client.ResolveSecret(secret.Reference)
-	if err != nil {
-		return "", errors.OnePasswordError(
-			fmt.Sprintf("Resolving secret %s", secretName),
-			fmt.Sprintf("Failed to resolve 1Password reference: %s", secret.Reference),
-			err,
-		)
-	}
-
+func (p *Processor) processSecret(secret config.Secret, secretName, value string) (string, error) {
 	// Determine output path with enhanced path management
 	outputPath, err := p.resolveSecretPathWithTemplate(secret, secretName)
 	if err != nil {
@@ -162,6 +177,19 @@ func (p *Processor) processSecret(secret config.Secret, secretName string) (stri
 	}
 
 	return outputPath, nil
+}
+
+func uniqueReferences(secrets []config.Secret) []string {
+	seen := make(map[string]struct{}, len(secrets))
+	var references []string
+	for _, secret := range secrets {
+		if _, ok := seen[secret.Reference]; ok {
+			continue
+		}
+		seen[secret.Reference] = struct{}{}
+		references = append(references, secret.Reference)
+	}
+	return references
 }
 
 // setOwnership sets the file ownership based on owner and group names
