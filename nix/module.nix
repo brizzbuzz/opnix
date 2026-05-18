@@ -390,14 +390,17 @@ in {
           systemd.services.opnix-secrets = {
             description = "OpNix Secret Management";
             wantedBy = ["multi-user.target"];
-            after = ["network.target"];
-            wants = ["network.target"];
+            after = ["network-online.target" "nss-lookup.target"];
+            wants = ["network-online.target" "nss-lookup.target"];
 
             serviceConfig = {
               Type = "oneshot";
               RemainAfterExit = true;
               Restart = "on-failure";
-              RestartSec = 30;
+              RestartSec = "15min";
+              RestartPreventExitStatus = 65;
+              StartLimitIntervalSec = "1h";
+              StartLimitBurst = 2;
               User = "root";
               Group = opnixGroup;
             };

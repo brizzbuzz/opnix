@@ -1,31 +1,16 @@
 {
   pkgs,
   src,
+  vendorHash,
 }: {
   # Run tests
-  go-tests = pkgs.stdenv.mkDerivation {
-    name = "opnix-go-tests";
+  go-tests = pkgs.buildGoModule {
+    pname = "opnix-go-tests";
+    version = "0.9.0";
     inherit src;
+    inherit vendorHash;
 
-    nativeBuildInputs = [pkgs.go];
-
-    buildPhase = ''
-      # Set up Go environment
-      export GOPATH=$TMPDIR/go
-      export GOCACHE=$TMPDIR/go-cache
-      export GO111MODULE=on
-
-      # Create a clean project directory
-      mkdir -p $TMPDIR/workspace
-      cd $TMPDIR/workspace
-
-      # Copy source files
-      cp -r $src/* .
-
-      # Initialize and verify modules
-      go mod download
-
-      # Run tests
+    checkPhase = ''
       go test ./...
     '';
 
@@ -33,32 +18,20 @@
   };
 
   # Run golangci-lint
-  go-lint = pkgs.stdenv.mkDerivation {
-    name = "opnix-go-lint";
+  go-lint = pkgs.buildGoModule {
+    pname = "opnix-go-lint";
+    version = "0.9.0";
     inherit src;
+    inherit vendorHash;
 
-    nativeBuildInputs = [pkgs.go pkgs.golangci-lint];
+    nativeBuildInputs = [pkgs.golangci-lint];
 
     buildPhase = ''
-      # Set up Go environment
-      export GOPATH=$TMPDIR/go
-      export GOCACHE=$TMPDIR/go-cache
-      export GO111MODULE=on
       export GOLANGCI_LINT_CACHE=$TMPDIR/golangci-lint
       export XDG_CACHE_HOME=$TMPDIR/cache
 
-      # Create all necessary directories
       mkdir -p $GOLANGCI_LINT_CACHE
       mkdir -p $XDG_CACHE_HOME
-      mkdir -p $GOCACHE
-      mkdir -p $GOPATH
-
-      # Create and move to workspace
-      mkdir -p $TMPDIR/workspace
-      cd $TMPDIR/workspace
-
-      # Copy source files
-      cp -r $src/* .
 
       ${
         let
@@ -79,10 +52,6 @@
         in "echo -n '${cfg}' >> .golangci.yaml"
       }
 
-      # Initialize modules
-      go mod download
-
-      # Run linter
       golangci-lint run --allow-parallel-runners \
         --timeout=5m \
         --max-same-issues=20 \

@@ -19,9 +19,16 @@ import (
 // ServiceAction defines how to handle a service when secrets change
 type ServiceAction struct {
 	Name    string
+	Start   bool
 	Restart bool
 	Signal  string
 	After   []string
+}
+
+type serviceStatus struct {
+	ActiveState string
+	SubState    string
+	Result      string
 }
 
 // SecretHash represents a stored hash of a secret's content
@@ -289,11 +296,22 @@ func (m *Manager) ProcessSecretChanges(secrets []config.Secret, secretPaths map[
 	}
 
 	var changedSecrets []string
-	var allServiceActions []ServiceAction
+	var changedServiceActions []ServiceAction
+	var configuredServiceActions []ServiceAction
 
 	// Check each secret for changes
 	for i, secret := range secrets {
 		secretName := fmt.Sprintf("secret[%d]:%s", i, secret.Path)
+
+		actions, err := m.ExtractServiceActions(secret, secretName)
+		if err != nil {
+			if m.config.ErrorHandling.ContinueOnError {
+				fmt.Fprintf(os.Stderr, "WARNING: Failed to extract service actions for %s: %v\n", secretName, err)
+				continue
+			}
+			return err
+		}
+		configuredServiceActions = append(configuredServiceActions, actions...)
 
 		// Get the actual file path for this secret
 		var secretPath string
@@ -327,18 +345,7 @@ func (m *Manager) ProcessSecretChanges(secrets []config.Secret, secretPaths map[
 
 		if hasChanged {
 			changedSecrets = append(changedSecrets, secretName)
-
-			// Extract service actions for this secret
-			actions, err := m.ExtractServiceActions(secret, secretName)
-			if err != nil {
-				if m.config.ErrorHandling.ContinueOnError {
-					fmt.Fprintf(os.Stderr, "WARNING: Failed to extract service actions for %s: %v\n", secretName, err)
-					continue
-				}
-				return err
-			}
-
-			allServiceActions = append(allServiceActions, actions...)
+			changedServiceActions = append(changedServiceActions, actions...)
 		}
 	}
 
@@ -349,14 +356,64 @@ func (m *Manager) ProcessSecretChanges(secrets []config.Secret, secretPaths map[
 		}
 	}
 
-	// Process service actions if we have changes
-	if len(allServiceActions) > 0 {
+	if len(changedServiceActions) > 0 {
 		fmt.Printf("INFO: Processing %d changed secrets: %v\n", len(changedSecrets), changedSecrets)
+	}
+
+	recoveryActions, err := m.collectRecoveryActions(configuredServiceActions, changedServiceActions)
+	if err != nil {
+		return err
+	}
+
+	allServiceActions := append(changedServiceActions, recoveryActions...)
+	if len(allServiceActions) > 0 {
 		return m.processServiceActions(allServiceActions)
 	}
 
 	fmt.Printf("INFO: No secret changes detected, skipping service restarts\n")
 	return nil
+}
+
+func (m *Manager) collectRecoveryActions(configuredActions, changedActions []ServiceAction) ([]ServiceAction, error) {
+	changedServices := make(map[string]struct{}, len(changedActions))
+	for _, action := range changedActions {
+		changedServices[action.Name] = struct{}{}
+	}
+
+	var recoveryActions []ServiceAction
+	for _, action := range configuredActions {
+		if _, exists := changedServices[action.Name]; exists {
+			continue
+		}
+
+		recoverService, err := m.shouldRecoverService(action.Name)
+		if err != nil {
+			if m.config.ErrorHandling.ContinueOnError {
+				fmt.Fprintf(os.Stderr, "WARNING: Failed to determine recovery state for %s: %v\n", action.Name, err)
+				continue
+			}
+			return nil, err
+		}
+		if !recoverService {
+			continue
+		}
+
+		recoveryAction := action
+		recoveryAction.Start = true
+		recoveryAction.Restart = false
+		recoveryAction.Signal = ""
+		recoveryActions = append(recoveryActions, recoveryAction)
+	}
+
+	if len(recoveryActions) > 0 {
+		var serviceNames []string
+		for _, action := range recoveryActions {
+			serviceNames = append(serviceNames, action.Name)
+		}
+		fmt.Printf("INFO: Recovering %d services after successful secret processing: %v\n", len(recoveryActions), serviceNames)
+	}
+
+	return recoveryActions, nil
 }
 
 // processServiceActions executes the required service actions
@@ -366,7 +423,16 @@ func (m *Manager) processServiceActions(actions []ServiceAction) error {
 	for _, action := range actions {
 		// If we already have an action for this service, prefer restart over reload
 		if existing, exists := serviceActions[action.Name]; exists {
+			if existing.Start {
+				if action.Restart || action.Signal != "" {
+					serviceActions[action.Name] = action
+				}
+				continue
+			}
+
 			if action.Restart && !existing.Restart {
+				serviceActions[action.Name] = action
+			} else if action.Start && !existing.Restart && existing.Signal == "" {
 				serviceActions[action.Name] = action
 			}
 		} else {
@@ -384,7 +450,7 @@ func (m *Manager) processServiceActions(actions []ServiceAction) error {
 				return errors.ServiceError(
 					fmt.Sprintf("Executing service action for %s", serviceName),
 					serviceName,
-					"restart/reload",
+					"start/restart/reload",
 					err,
 				)
 			}
@@ -403,7 +469,11 @@ func (m *Manager) executeServiceAction(action ServiceAction) error {
 	var cmd string
 	var args []string
 
-	if action.Signal != "" {
+	if action.Start {
+		cmd = m.systemctl
+		args = []string{"start", action.Name}
+		fmt.Printf("INFO: Starting service %s\n", action.Name)
+	} else if action.Signal != "" {
 		// Send custom signal
 		cmd = "kill"
 		args = []string{"-" + action.Signal, fmt.Sprintf("$(systemctl show -p MainPID --value %s)", action.Name)}
@@ -456,28 +526,70 @@ func (m *Manager) SetDryRun(dryRun bool) {
 
 // IsServiceRunning checks if a systemd service is currently running
 func (m *Manager) IsServiceRunning(serviceName string) (bool, error) {
-	cmd := exec.Command(m.systemctl, "is-active", "--quiet", serviceName)
-	err := cmd.Run()
+	status, err := m.getServiceStatus(serviceName)
+	if err != nil {
+		return false, err
+	}
 
-	if err == nil {
+	return status.ActiveState == "active", nil
+}
+
+func (m *Manager) shouldRecoverService(serviceName string) (bool, error) {
+	status, err := m.getServiceStatus(serviceName)
+	if err != nil {
+		return false, err
+	}
+
+	if status.ActiveState == "active" {
+		return false, nil
+	}
+
+	if status.ActiveState == "failed" {
 		return true, nil
 	}
 
-	// Check if it's an exit status error (service not running) vs other error
-	if exitError, ok := err.(*exec.ExitError); ok {
-		// systemctl is-active returns exit code 3 for inactive services
-		if exitError.ExitCode() == 3 {
-			return false, nil
+	return status.ActiveState == "inactive" && status.Result == "dependency", nil
+}
+
+func (m *Manager) getServiceStatus(serviceName string) (serviceStatus, error) {
+	cmd := exec.Command(m.systemctl, "show", serviceName, "--property=ActiveState", "--property=SubState", "--property=Result")
+	output, err := cmd.Output()
+	if err != nil {
+		return serviceStatus{}, errors.ServiceError(
+			"Checking service status",
+			serviceName,
+			"show",
+			err,
+		)
+	}
+
+	status := serviceStatus{}
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		switch parts[0] {
+		case "ActiveState":
+			status.ActiveState = parts[1]
+		case "SubState":
+			status.SubState = parts[1]
+		case "Result":
+			status.Result = parts[1]
 		}
 	}
 
-	// Other error occurred
-	return false, errors.ServiceError(
-		"Checking service status",
-		serviceName,
-		"is-active",
-		err,
-	)
+	if status.ActiveState == "" {
+		return serviceStatus{}, errors.ServiceError(
+			"Checking service status",
+			serviceName,
+			"show",
+			fmt.Errorf("missing ActiveState in systemctl output"),
+		)
+	}
+
+	return status, nil
 }
 
 // ValidateServices checks that all configured services exist and are valid
