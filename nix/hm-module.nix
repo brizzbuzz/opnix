@@ -6,6 +6,17 @@
 }: let
   cfg = config.programs.onepassword-secrets;
 
+  resolveHomeSecretPath = name: secret: let
+    secretPath =
+      if secret.path != null
+      then secret.path
+      else name;
+    secretPathStr = toString secretPath;
+  in
+    if builtins.substring 0 1 secretPathStr == "/"
+    then secretPathStr
+    else "${config.home.homeDirectory}/${secretPathStr}";
+
   # Validate that secret keys use proper Nix variable naming (camelCase)
   # Valid: databasePassword, sslCert, myApiKey
   # Invalid: "database/password", "ssl-cert", "my_api_key"
@@ -37,8 +48,9 @@
         type = lib.types.nullOr lib.types.str;
         default = null;
         description = ''
-          Path where the secret will be stored, relative to home directory.
-          If null, uses the secret name. For example: ".config/Yubico/u2f_keys" or ".ssh/id_rsa"
+          Path where the secret will be stored.
+          Relative paths are resolved from the home directory, while absolute paths are used as-is.
+          If null, uses the secret name. For example: ".config/Yubico/u2f_keys", ".ssh/id_rsa", or "/run/secrets/user/api-key"
         '';
         example = ".config/Yubico/u2f_keys";
       };
@@ -103,7 +115,8 @@ in {
       description = ''
         Declarative secrets configuration (GitHub #11).
         Keys are secret names, values are secret configurations.
-        Paths are relative to home directory.
+        Relative paths are resolved from the home directory.
+        Absolute paths are used as-is.
       '';
       example = {
         sshPrivateKey = {
@@ -138,11 +151,9 @@ in {
         then
           lib.mapAttrs (
             name: secret: let
-              secretPath =
-                if secret.path != null
-                then secret.path
-                else name;
-            in "${config.home.homeDirectory}/${secretPath}"
+              secretPath = resolveHomeSecretPath name secret;
+            in
+              secretPath
           )
           (validateSecretKeys cfg.secrets)
         else {};
@@ -207,12 +218,9 @@ in {
         # Create parent directories for all declarative secrets
         ${lib.concatMapStringsSep "\n" (name: let
           secret = cfg.secrets.${name};
-          secretPath =
-            if secret.path != null
-            then secret.path
-            else name;
+          secretPath = resolveHomeSecretPath name secret;
         in ''
-          $DRY_RUN_CMD mkdir -p "''${HOME}/${lib.escapeShellArg (builtins.dirOf secretPath)}"
+          $DRY_RUN_CMD mkdir -p ${lib.escapeShellArg (builtins.dirOf secretPath)}
         '') (builtins.attrNames cfg.secrets)}
       '';
 

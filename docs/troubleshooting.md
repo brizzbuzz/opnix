@@ -676,9 +676,9 @@ Home Manager activation completes but secrets aren't in expected locations.
 2. **Verify configuration:**
    ```nix
    programs.onepassword-secrets.secrets.sshKey = {
-     reference = "op://Personal/SSH/key";
-     path = ".ssh/id_rsa";  # Relative to home directory
-   };
+      reference = "op://Personal/SSH/key";
+      path = ".ssh/id_rsa";  # Relative paths resolve under the home directory
+    };
    ```
 
 3. **Check activation output:**
