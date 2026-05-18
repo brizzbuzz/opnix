@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0] - 2026-05-18
+
+### 🚀 Features
+
+- Improve boot-time secret recovery and retry handling (#42)
+
+### 🐛 Bug Fixes
+
+- Support absolute and relative Home Manager secret paths (#39)
+- Remove test var from flake (#35)
+
 ## [0.7.0] - 2025-06-29
 
 ### 🚀 Features
