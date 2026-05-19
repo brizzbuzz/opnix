@@ -374,18 +374,9 @@ func (m *Manager) ProcessSecretChanges(secrets []config.Secret, secretPaths map[
 	return nil
 }
 
-func (m *Manager) collectRecoveryActions(configuredActions, changedActions []ServiceAction) ([]ServiceAction, error) {
-	changedServices := make(map[string]struct{}, len(changedActions))
-	for _, action := range changedActions {
-		changedServices[action.Name] = struct{}{}
-	}
-
+func (m *Manager) collectRecoveryActions(configuredActions, _ []ServiceAction) ([]ServiceAction, error) {
 	var recoveryActions []ServiceAction
 	for _, action := range configuredActions {
-		if _, exists := changedServices[action.Name]; exists {
-			continue
-		}
-
 		recoverService, err := m.shouldRecoverService(action.Name)
 		if err != nil {
 			if m.config.ErrorHandling.ContinueOnError {
@@ -421,18 +412,15 @@ func (m *Manager) processServiceActions(actions []ServiceAction) error {
 	// Group actions by service to avoid duplicate operations
 	serviceActions := make(map[string]ServiceAction)
 	for _, action := range actions {
-		// If we already have an action for this service, prefer restart over reload
+		// Start wins over restart/reload because try-restart is a no-op for inactive units.
 		if existing, exists := serviceActions[action.Name]; exists {
 			if existing.Start {
-				if action.Restart || action.Signal != "" {
-					serviceActions[action.Name] = action
-				}
 				continue
 			}
 
-			if action.Restart && !existing.Restart {
+			if action.Start {
 				serviceActions[action.Name] = action
-			} else if action.Start && !existing.Restart && existing.Signal == "" {
+			} else if action.Restart && !existing.Restart {
 				serviceActions[action.Name] = action
 			}
 		} else {

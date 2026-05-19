@@ -539,6 +539,80 @@ func TestProcessSecretChangesRestartsChangedServicesWithoutBlocking(t *testing.T
 	}
 }
 
+func TestProcessSecretChangesStartsChangedDependencyBlockedServices(t *testing.T) {
+	tempDir := t.TempDir()
+	hashFile := filepath.Join(tempDir, "test-hashes.json")
+	logFile := filepath.Join(tempDir, "systemctl.log")
+	fakeSystemctl := writeFakeSystemctl(t, tempDir)
+
+	t.Setenv("FAKE_SYSTEMCTL_DIR", tempDir)
+	t.Setenv("FAKE_SYSTEMCTL_LOG", logFile)
+
+	if err := os.WriteFile(filepath.Join(tempDir, "test-service.status"), []byte("ActiveState=inactive\nSubState=dead\nResult=dependency\n"), 0600); err != nil {
+		t.Fatalf("Failed to write fake service status: %v", err)
+	}
+
+	secretPath := filepath.Join(tempDir, "test-secret.txt")
+	if err := os.WriteFile(secretPath, []byte("old-secret-content"), 0600); err != nil {
+		t.Fatalf("Failed to create test secret: %v", err)
+	}
+
+	store, err := NewHashStore(hashFile)
+	if err != nil {
+		t.Fatalf("Failed to create hash store: %v", err)
+	}
+	if _, err := store.hasChanged(secretPath); err != nil {
+		t.Fatalf("Failed to seed hash store: %v", err)
+	}
+	if err := store.save(); err != nil {
+		t.Fatalf("Failed to save seeded hash store: %v", err)
+	}
+
+	if err := os.WriteFile(secretPath, []byte("new-secret-content"), 0600); err != nil {
+		t.Fatalf("Failed to update test secret: %v", err)
+	}
+
+	manager := &Manager{
+		config: config.SystemdIntegration{
+			Enable:          true,
+			RestartOnChange: true,
+			ChangeDetection: config.ChangeDetection{
+				Enable:   true,
+				HashFile: hashFile,
+			},
+			ErrorHandling: config.ErrorHandling{
+				ContinueOnError: true,
+				MaxRetries:      1,
+			},
+		},
+		hashStore: store,
+		systemctl: fakeSystemctl,
+	}
+
+	secrets := []config.Secret{{
+		Path:      "test/secret",
+		Reference: "op://vault/item/field",
+		Services:  []interface{}{"test-service"},
+	}}
+
+	secretPaths := map[string]string{
+		"secret[0]:test/secret": secretPath,
+	}
+
+	if err := manager.ProcessSecretChanges(secrets, secretPaths); err != nil {
+		t.Fatalf("ProcessSecretChanges failed: %v", err)
+	}
+
+	logContent, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("Failed to read fake systemctl log: %v", err)
+	}
+
+	if string(logContent) != "--no-block start test-service\n" {
+		t.Fatalf("expected changed dependency-blocked service to be started, got %q", string(logContent))
+	}
+}
+
 func TestProcessSecretChangesSkipsHealthyServicesWhenUnchanged(t *testing.T) {
 	tempDir := t.TempDir()
 	hashFile := filepath.Join(tempDir, "test-hashes.json")
