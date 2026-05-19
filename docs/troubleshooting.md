@@ -363,13 +363,27 @@ ERROR: Found dependency loop involving opnix-secrets.service
    ```
 
 3. **Use proper service ordering:**
+    ```nix
+    # Instead, make services depend on OpNix:
+    services.onepassword-secrets.systemdIntegration = {
+      enable = true;
+      services = ["postgresql"];
+    };
+    ```
+
+4. **Avoid hard requirements from managed services:**
    ```nix
-   # Instead, make services depend on OpNix:
-   services.onepassword-secrets.systemdIntegration = {
-     enable = true;
-     services = ["postgresql"];
+   # Prefer this:
+   systemd.services.postgresql = {
+     after = [ "opnix-secrets.service" ];
+     wants = [ "opnix-secrets.service" ];
    };
+
+   # Avoid this unless PostgreSQL must fail hard when OpNix fails:
+   systemd.services.postgresql.requires = [ "opnix-secrets.service" ];
    ```
+
+   `Requires=opnix-secrets.service` can deadlock during OpNix-triggered restarts: the managed service waits for `opnix-secrets.service` to finish while OpNix is waiting for the managed service action to complete.
 
 ## Network and Connectivity Issues
 

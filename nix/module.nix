@@ -393,14 +393,17 @@ in {
             after = ["network-online.target" "nss-lookup.target"];
             wants = ["network-online.target" "nss-lookup.target"];
 
+            unitConfig = {
+              StartLimitIntervalSec = "1h";
+              StartLimitBurst = 2;
+            };
+
             serviceConfig = {
               Type = "oneshot";
               RemainAfterExit = true;
               Restart = "on-failure";
               RestartSec = "15min";
-              RestartPreventExitStatus = 65;
-              StartLimitIntervalSec = "1h";
-              StartLimitBurst = 2;
+              RestartPreventExitStatus = "65 75";
               User = "root";
               Group = opnixGroup;
             };

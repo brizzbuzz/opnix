@@ -471,7 +471,7 @@ func (m *Manager) executeServiceAction(action ServiceAction) error {
 
 	if action.Start {
 		cmd = m.systemctl
-		args = []string{"start", action.Name}
+		args = []string{"--no-block", "start", action.Name}
 		fmt.Printf("INFO: Starting service %s\n", action.Name)
 	} else if action.Signal != "" {
 		// Send custom signal
@@ -481,12 +481,12 @@ func (m *Manager) executeServiceAction(action ServiceAction) error {
 	} else if action.Restart {
 		// Restart service
 		cmd = m.systemctl
-		args = []string{"restart", action.Name}
+		args = []string{"--no-block", "try-restart", action.Name}
 		fmt.Printf("INFO: Restarting service %s\n", action.Name)
 	} else {
 		// Reload service
 		cmd = m.systemctl
-		args = []string{"reload", action.Name}
+		args = []string{"--no-block", "reload", action.Name}
 		fmt.Printf("INFO: Reloading service %s\n", action.Name)
 	}
 

@@ -229,6 +229,8 @@ When using advanced service configuration (NixOS only), each service supports:
 - **Default**: `["opnix-secrets.service"]`
 - **Description**: Additional systemd dependencies for this service
 
+Prefer ordering managed services with `After=opnix-secrets.service` and `Wants=opnix-secrets.service`. Avoid `Requires=opnix-secrets.service` unless the service must fail hard when OpNix fails; hard requirements can deadlock if OpNix triggers a restart while the managed service is ordered after `opnix-secrets.service`.
+
 ### Path Template Configuration
 
 #### `pathTemplate`

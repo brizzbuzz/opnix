@@ -37,6 +37,7 @@
     in {
       packages.default = buildOpnix;
       inherit checks;
+      devShells.default = import ./nix/devshell.nix {inherit pkgs buildOpnix;};
       formatter = pkgs.alejandra;
     })
     // {

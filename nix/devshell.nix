@@ -36,6 +36,12 @@ in
     ];
 
     shellHook = ''
+      case " ''${GOFLAGS:-} " in
+        *" -mod=vendor "*)
+          export GOFLAGS="''${GOFLAGS//-mod=vendor/}"
+          ;;
+      esac
+
       ${lib.optionalString (tokenPath != null) ''
         if [ -z "''${OPNIX_ENV_TOKEN_FILE:-}" ]; then
           export OPNIX_ENV_TOKEN_FILE=${lib.escapeShellArg tokenPath}
@@ -44,26 +50,30 @@ in
 
       if [ -n "''${OPNIX_ENV_DISABLE:-}" ]; then
         echo "INFO: OPNIX_ENV_DISABLE set, skipping opnix env exports" >&2
-      elif [ ${
+      ${
         if configArg == null
-        then "0"
-        else "1"
-      } -eq 0 ]; then
-        echo "WARNING: no opnix environment configuration provided" >&2
-      else
-        token_args=()
-        if [ -z "''${OPNIX_ENV_TOKEN_FILE:-}" ]; then
-          export OPNIX_ENV_TOKEN_FILE="''${HOME}/.config/opnix/token"
-        fi
-        if [ -n "''${OPNIX_ENV_TOKEN_FILE:-}" ]; then
-          token_args=(-token-file "''${OPNIX_ENV_TOKEN_FILE}")
-        fi
+        then ''
+          else
+            echo "WARNING: no opnix environment configuration provided" >&2
+          fi
+        ''
+        else ''
+          else
+            token_args=()
+            if [ -z "''${OPNIX_ENV_TOKEN_FILE:-}" ]; then
+              export OPNIX_ENV_TOKEN_FILE="''${HOME}/.config/opnix/token"
+            fi
+            if [ -n "''${OPNIX_ENV_TOKEN_FILE:-}" ]; then
+              token_args=(-token-file "''${OPNIX_ENV_TOKEN_FILE}")
+            fi
 
-        if output="$(${buildOpnix}/bin/opnix env ${configArg.flag} ${configArg.value} -format shell "''${token_args[@]}")"; then
-          eval "$output"
-        else
-          echo "WARNING: failed to resolve opnix environment variables" >&2
-        fi
-      fi
+            if output="$(${buildOpnix}/bin/opnix env ${configArg.flag} ${configArg.value} -format shell "''${token_args[@]}")"; then
+              eval "$output"
+            else
+              echo "WARNING: failed to resolve opnix environment variables" >&2
+            fi
+          fi
+        ''
+      }
     '';
   }
