@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.1] - 2026-05-19
+
+### 🐛 Bug Fixes
+
+- Avoid opnix service restart deadlocks (#45)
+
 ## [0.10.0] - 2026-05-18
 
 ### 🚀 Features
