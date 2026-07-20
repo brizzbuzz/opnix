@@ -386,6 +386,11 @@ in {
             })
             cfg.users);
 
+          # Make the CLI available on PATH without requiring a manual overlay.
+          # lib.lowPrio avoids a buildEnv collision if the user already added
+          # opnix to systemPackages manually — their copy silently wins.
+          environment.systemPackages = [(lib.lowPrio pkgsWithOverlay.opnix)];
+
           # Create systemd service instead of activation script
           systemd.services.opnix-secrets = {
             description = "OpNix Secret Management";
