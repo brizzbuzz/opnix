@@ -193,6 +193,12 @@ darwin-rebuild switch --flake .
 home-manager switch --flake .
 ```
 
+> **Note:** On NixOS, enabling `services.onepassword-secrets.enable = true` now adds
+> `opnix` to `environment.systemPackages` automatically, so the rebuild above is the
+> only install step required. If you previously added `opnix` via a manual overlay
+> or your own `environment.systemPackages` entry, that entry is now redundant and can
+> be removed.
+
 **Set the token** using the OpNix CLI:
 
 ```bash

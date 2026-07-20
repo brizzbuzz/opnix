@@ -86,6 +86,10 @@ sudo opnix token set
 sudo nixos-rebuild switch --flake .
 ```
 
+> **Note:** `opnix` is automatically on `$PATH` once `services.onepassword-secrets.enable = true`
+> and you rebuild — no separate CLI install or overlay needed. Remove any existing manual
+> `systemPackages`/overlay entry for `opnix`.
+
 ## Documentation
 
 📚 **[Complete Documentation](./docs/README.md)**
