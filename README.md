@@ -82,8 +82,8 @@ programs.onepassword-secrets = {
 Set up your token:
 
 ```bash
-sudo opnix token set
 sudo nixos-rebuild switch --flake .
+sudo opnix token set
 ```
 
 > **Note:** On NixOS, `opnix` is automatically added to `environment.systemPackages` once
