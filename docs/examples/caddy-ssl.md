@@ -216,7 +216,6 @@ Fields:
         hashFile = "/var/lib/opnix/ssl-hashes";
       };
       errorHandling = {
-        rollbackOnFailure = true;
         continueOnError = false;
       };
     };

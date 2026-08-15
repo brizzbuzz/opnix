@@ -266,7 +266,11 @@ in {
                 rollbackOnFailure = lib.mkOption {
                   type = lib.types.bool;
                   default = false;
-                  description = "Rollback secrets to previous versions if service restart fails";
+                  description = ''
+                    Reserved for future secret-file rollback handling. This option does not
+                    roll back NixOS generations or preserve 1Password references used by
+                    older generations.
+                  '';
                 };
 
                 continueOnError = lib.mkOption {
