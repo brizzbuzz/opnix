@@ -356,6 +356,48 @@ sudo systemctl restart opnix-secrets.service
 sudo systemctl status postgresql.service caddy.service
 ```
 
+## Secret Reference Migrations and Rollback Safety
+
+NixOS generations retain OpNix configuration, including each `op://` reference,
+but secret values remain in 1Password and are resolved when
+`opnix-secrets.service` runs. Deleting or renaming a referenced field can
+therefore break an older generation even though the generation itself remains
+available for rollback.
+
+Use an overlap window whenever a reference changes:
+
+1. Create and populate the replacement field in 1Password.
+2. Update the Nix configuration to use the replacement reference.
+3. Build and test the new generation before switching to it.
+4. Verify `opnix-secrets.service` and its recent journal entries after the switch.
+5. Keep the old field available while any retained generation may still be used
+   as a rollback target.
+6. Remove the old field only after that rollback window has closed.
+
+For example, keep `op://Example/Service/old-field` available while deploying a
+generation that uses `op://Example/Service/new-field`. Do not copy secret values
+into the Nix store to make generations self-contained.
+
+```bash
+# Build without activating the generation
+nix build .#nixosConfigurations.HOST.config.system.build.toplevel
+
+# Test, then activate the generation
+sudo nixos-rebuild test --flake .#HOST
+sudo nixos-rebuild switch --flake .#HOST
+
+# Verify without printing secret contents
+sudo systemctl status opnix-secrets.service
+sudo journalctl -u opnix-secrets.service --since "15 minutes ago"
+sudo find /var/lib/opnix/secrets -type f -exec ls -la {} \;
+```
+
+If an older generation fails with exit code `65`, restore its retired field in
+1Password, restart `opnix-secrets.service`, and retain the field until that
+generation is no longer a rollback target. OpNix resolves all references before
+writing files, so a reference-resolution failure leaves existing secret files
+unchanged.
+
 ## Platform-Specific Migration
 
 ### NixOS Migration
@@ -533,7 +575,6 @@ services.onepassword-secrets = {
     enable = true;
     changeDetection.enable = true;
     errorHandling = {
-      rollbackOnFailure = true;
       continueOnError = false;
       maxRetries = 5;
     };

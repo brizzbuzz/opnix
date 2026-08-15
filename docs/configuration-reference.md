@@ -266,7 +266,6 @@ services.onepassword-secrets.systemdIntegration = {
   services = ["caddy" "postgresql"];
   restartOnChange = true;
   changeDetection.enable = true;
-  errorHandling.rollbackOnFailure = true;
 };
 ```
 
@@ -311,7 +310,8 @@ services.onepassword-secrets.systemdIntegration = {
 ##### `errorHandling.rollbackOnFailure`
 - **Type**: `bool`
 - **Default**: `false`
-- **Description**: Restore previous secrets on deployment failure
+- **Description**: Reserved for future secret-file rollback handling; currently has no runtime effect
+- **Notes**: This option does not roll back NixOS generations or preserve 1Password references used by older generations. Keep retired fields available through the rollback window instead.
 
 ##### `errorHandling.continueOnError`
 - **Type**: `bool`
@@ -592,9 +592,9 @@ services.onepassword-secrets = {
 };
 ```
 
-### Change Detection and Rollback
+### Change Detection and Rollback Limits
 
-Enable advanced error handling:
+Configure content-based change detection:
 
 ```nix
 services.onepassword-secrets.systemdIntegration = {
@@ -603,13 +603,13 @@ services.onepassword-secrets.systemdIntegration = {
     enable = true;
     hashFile = "/var/lib/opnix/secret-hashes";
   };
-  errorHandling = {
-    rollbackOnFailure = true;
-    continueOnError = false;
-    maxRetries = 5;
-  };
 };
 ```
+
+`rollbackOnFailure` is currently reserved and does not restore secret files or
+roll back a NixOS generation. See
+[Secret Reference Migrations and Rollback Safety](./migration-guide.md#secret-reference-migrations-and-rollback-safety)
+before changing or deleting a 1Password field used by a deployed generation.
 
 ### Custom Token Locations
 

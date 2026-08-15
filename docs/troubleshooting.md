@@ -512,6 +512,44 @@ op item list --vault "Vault"
    # Check service account permissions in 1Password console
    ```
 
+### Issue: Rollback Generation References a Retired Field
+
+**Symptoms:**
+
+- `opnix-secrets.service` fails after activating an older NixOS generation.
+- The journal reports a missing reference and systemd records exit code `65`.
+- The same reference worked when that generation was originally deployed.
+
+Each generation stores its OpNix configuration and `op://` references, but not
+the corresponding secret values. If a field was later renamed or deleted in
+1Password, the older generation cannot resolve it.
+
+**Recovery:**
+
+1. Review the service log to identify the missing reference:
+   ```bash
+   sudo journalctl -u opnix-secrets.service -n 50
+   ```
+   The full `op://` reference is logged. Treat its vault, item, and field names
+   as sensitive metadata and redact them before sharing logs.
+2. Restore the retired field in 1Password at its previous vault, item, and field
+   path. Do not place the secret value in the Nix configuration or Nix store.
+3. Retry secret materialization:
+   ```bash
+   sudo systemctl restart opnix-secrets.service
+   sudo systemctl status opnix-secrets.service
+   ```
+4. Keep the restored field until the affected generation is no longer retained
+   as a rollback target.
+
+OpNix resolves every configured reference before updating secret files. A
+missing-reference failure therefore preserves the existing materialized files,
+but services should not be restarted until the intended generation's references
+resolve successfully.
+
+See [Secret Reference Migrations and Rollback Safety](./migration-guide.md#secret-reference-migrations-and-rollback-safety)
+for the preventive deployment procedure.
+
 ### Issue: Configuration Validation Errors
 
 **Symptoms:**

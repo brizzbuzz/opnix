@@ -5,15 +5,18 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/brizzbuzz/opnix/internal/config"
+	"github.com/brizzbuzz/opnix/internal/errors"
 )
 
 // Mock client for testing
 type mockClient struct {
 	secrets      map[string]string
 	resolveCalls map[string]int
+	resolveErr   error
 }
 
 func (m *mockClient) ResolveSecret(reference string) (string, error) {
@@ -27,6 +30,10 @@ func (m *mockClient) ResolveSecret(reference string) (string, error) {
 }
 
 func (m *mockClient) ResolveSecrets(references []string) (map[string]string, error) {
+	if m.resolveErr != nil {
+		return nil, m.resolveErr
+	}
+
 	resolved := make(map[string]string, len(references))
 	for _, reference := range references {
 		value, err := m.ResolveSecret(reference)
@@ -36,6 +43,49 @@ func (m *mockClient) ResolveSecrets(references []string) (map[string]string, err
 		resolved[reference] = value
 	}
 	return resolved, nil
+}
+
+func TestProcessorMissingReferencePreservesExistingSecrets(t *testing.T) {
+	const reference = "op://Example/Service/old-field"
+	providerErr := &errors.ProviderResolutionError{Failures: []*errors.ProviderError{{
+		Kind:      errors.ProviderErrorMissingReference,
+		Reference: reference,
+		Issue:     "field_not_found",
+	}}}
+	tmpDir := t.TempDir()
+	existingPath := filepath.Join(tmpDir, "database/password")
+	if err := os.MkdirAll(filepath.Dir(existingPath), 0755); err != nil {
+		t.Fatalf("Failed to create existing secret directory: %v", err)
+	}
+	if err := os.WriteFile(existingPath, []byte("existing-secret"), 0600); err != nil {
+		t.Fatalf("Failed to create existing secret: %v", err)
+	}
+
+	processor := NewProcessor(&mockClient{resolveErr: providerErr}, tmpDir)
+	result, err := processor.Process(&config.Config{Secrets: []config.Secret{{
+		Path:      "database/password",
+		Reference: reference,
+	}}})
+	if err == nil {
+		t.Fatal("Expected missing reference error")
+	}
+	if result != nil {
+		t.Fatalf("Expected no process result, got %#v", result)
+	}
+	if got := errors.ExitCode(err); got != errors.ExitCodeMissingReference {
+		t.Fatalf("Expected exit code %d, got %d", errors.ExitCodeMissingReference, got)
+	}
+	if !strings.Contains(err.Error(), "older NixOS generation") {
+		t.Fatalf("Expected rollback recovery suggestion, got:\n%s", err)
+	}
+
+	content, readErr := os.ReadFile(existingPath)
+	if readErr != nil {
+		t.Fatalf("Failed to read existing secret: %v", readErr)
+	}
+	if string(content) != "existing-secret" {
+		t.Fatalf("Expected existing secret to remain unchanged, got %q", content)
+	}
 }
 
 func TestProcessor(t *testing.T) {
