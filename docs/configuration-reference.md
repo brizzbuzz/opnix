@@ -231,6 +231,11 @@ When using advanced service configuration (NixOS only), each service supports:
 
 Prefer ordering managed services with `After=opnix-secrets.service` and `Wants=opnix-secrets.service`. Avoid `Requires=opnix-secrets.service` unless the service must fail hard when OpNix fails; hard requirements can deadlock if OpNix triggers a restart while the managed service is ordered after `opnix-secrets.service`.
 
+`opnix-secrets.service` does not automatically restart after exit status `65`
+(missing, invalid, or ambiguous references) or `75` (1Password rate limiting).
+These conditions require configuration repair or waiting for the provider reset
+window rather than repeated systemd starts.
+
 ### Path Template Configuration
 
 #### `pathTemplate`
@@ -266,7 +271,10 @@ services.onepassword-secrets.systemdIntegration = {
   services = ["caddy" "postgresql"];
   restartOnChange = true;
   changeDetection.enable = true;
-  errorHandling.rollbackOnFailure = true;
+  polling = {
+    enable = true;
+    interval = "6h";
+  };
 };
 ```
 
@@ -303,6 +311,30 @@ services.onepassword-secrets.systemdIntegration = {
 - **Default**: `"/var/lib/opnix/secret-hashes.json"`
 - **Description**: File to store secret content hashes for change detection
 
+#### `polling`
+- **Type**: `pollingOptions`
+- **Default**: `{}`
+- **Description**: NixOS-only automatic polling for remote 1Password changes
+
+##### `polling.enable`
+- **Type**: `bool`
+- **Default**: `false`
+- **Description**: Enable periodic secret retrieval through `opnix-secrets-poll.timer`
+
+##### `polling.interval`
+- **Type**: `str`
+- **Default**: `"6h"`
+- **Description**: A systemd time span used for both the first poll after boot and subsequent polls
+- **Example**: `"30min"`
+
+The normal boot-time `opnix-secrets.service` still retrieves secrets immediately.
+Polling uses a separate repeatable oneshot and the existing content hashes, so
+unchanged values do not restart managed services. Failed polls are recorded in
+journald and are retried at the next configured interval rather than in a tight
+loop. The local path watcher is suspended during each poll and restored when it
+finishes, preventing OpNix's own file operations from scheduling a duplicate
+retrieval.
+
 #### `errorHandling`
 - **Type**: `errorHandlingOptions`
 - **Default**: `{}`
@@ -311,7 +343,8 @@ services.onepassword-secrets.systemdIntegration = {
 ##### `errorHandling.rollbackOnFailure`
 - **Type**: `bool`
 - **Default**: `false`
-- **Description**: Restore previous secrets on deployment failure
+- **Description**: Reserved for future secret-file rollback handling; currently has no runtime effect
+- **Notes**: This option does not roll back NixOS generations or preserve 1Password references used by older generations. Keep retired fields available through the rollback window instead.
 
 ##### `errorHandling.continueOnError`
 - **Type**: `bool`
@@ -592,9 +625,9 @@ services.onepassword-secrets = {
 };
 ```
 
-### Change Detection and Rollback
+### Change Detection and Rollback Limits
 
-Enable advanced error handling:
+Configure content-based change detection:
 
 ```nix
 services.onepassword-secrets.systemdIntegration = {
@@ -603,13 +636,13 @@ services.onepassword-secrets.systemdIntegration = {
     enable = true;
     hashFile = "/var/lib/opnix/secret-hashes";
   };
-  errorHandling = {
-    rollbackOnFailure = true;
-    continueOnError = false;
-    maxRetries = 5;
-  };
 };
 ```
+
+`rollbackOnFailure` is currently reserved and does not restore secret files or
+roll back a NixOS generation. See
+[Secret Reference Migrations and Rollback Safety](./migration-guide.md#secret-reference-migrations-and-rollback-safety)
+before changing or deleting a 1Password field used by a deployed generation.
 
 ### Custom Token Locations
 

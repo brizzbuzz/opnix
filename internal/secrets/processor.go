@@ -1,6 +1,7 @@
 package secrets
 
 import (
+	stderrors "errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -72,15 +73,27 @@ func (p *Processor) Process(cfg *config.Config) (*ProcessResult, error) {
 	references := uniqueReferences(cfg.Secrets)
 	resolvedSecrets, err := p.client.ResolveSecrets(references)
 	if err != nil {
+		suggestions := []string{
+			"Check the failed 1Password references listed above",
+			"Create any missing vaults, items, or fields before restarting opnix-secrets.service",
+			"If rate-limited, wait for the 1Password reset window before retrying",
+		}
+		var resolutionErr *errors.ProviderResolutionError
+		if stderrors.As(err, &resolutionErr) {
+			for _, failure := range resolutionErr.Failures {
+				if failure.Kind == errors.ProviderErrorMissingReference {
+					suggestions = append(suggestions,
+						"If this service belongs to an older NixOS generation, restore any retired 1Password references until its rollback window closes",
+					)
+					break
+				}
+			}
+		}
 		return nil, errors.WrapWithSuggestions(
 			err,
 			"Resolving 1Password references",
 			"secret processing",
-			[]string{
-				"Check the failed 1Password references listed above",
-				"Create any missing vaults, items, or fields before restarting opnix-secrets.service",
-				"If rate-limited, wait for the 1Password reset window before retrying",
-			},
+			suggestions,
 		)
 	}
 
@@ -169,6 +182,16 @@ func (p *Processor) processSecret(secret config.Secret, secretName, value string
 		if err := p.setOwnership(outputPath, secret.Owner, secret.Group, secretName); err != nil {
 			return "", err
 		}
+	}
+
+	// WriteFile preserves permissions for existing files, so reconcile the declared mode explicitly.
+	if err := os.Chmod(outputPath, os.FileMode(fileMode)); err != nil {
+		return "", errors.FileOperationError(
+			fmt.Sprintf("Setting permissions for %s", secretName),
+			outputPath,
+			fmt.Sprintf("Failed to change permissions to %s", mode),
+			err,
+		)
 	}
 
 	// Create symlinks if specified

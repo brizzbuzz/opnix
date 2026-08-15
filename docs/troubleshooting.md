@@ -468,6 +468,29 @@ ERROR: request timeout after 30 seconds
    };
    ```
 
+### Issue: 1Password Rate Limit Exceeded
+
+**Symptoms:**
+
+- OpNix reports that the 1Password rate limit was exceeded.
+- `opnix-secrets.service` exits with status `75`.
+- systemd does not automatically restart the service.
+
+Exit status `75` is deliberately included in `RestartPreventExitStatus`. Retrying
+immediately would consume more provider capacity and can exhaust the service's
+systemd start limit without resolving the failure.
+
+Wait for the 1Password rate limit to clear, then retry once:
+
+```bash
+sudo systemctl restart opnix-secrets.service
+sudo systemctl status opnix-secrets.service
+```
+
+If the service remains rate-limited, wait for the next reset window rather than
+looping manual restarts. Existing secret files remain available because OpNix
+resolves all references before updating them.
+
 ## Configuration Issues
 
 ### Issue: Invalid 1Password Reference
@@ -511,6 +534,44 @@ op item list --vault "Vault"
    
    # Check service account permissions in 1Password console
    ```
+
+### Issue: Rollback Generation References a Retired Field
+
+**Symptoms:**
+
+- `opnix-secrets.service` fails after activating an older NixOS generation.
+- The journal reports a missing reference and systemd records exit code `65`.
+- The same reference worked when that generation was originally deployed.
+
+Each generation stores its OpNix configuration and `op://` references, but not
+the corresponding secret values. If a field was later renamed or deleted in
+1Password, the older generation cannot resolve it.
+
+**Recovery:**
+
+1. Review the service log to identify the missing reference:
+   ```bash
+   sudo journalctl -u opnix-secrets.service -n 50
+   ```
+   The full `op://` reference is logged. Treat its vault, item, and field names
+   as sensitive metadata and redact them before sharing logs.
+2. Restore the retired field in 1Password at its previous vault, item, and field
+   path. Do not place the secret value in the Nix configuration or Nix store.
+3. Retry secret materialization:
+   ```bash
+   sudo systemctl restart opnix-secrets.service
+   sudo systemctl status opnix-secrets.service
+   ```
+4. Keep the restored field until the affected generation is no longer retained
+   as a rollback target.
+
+OpNix resolves every configured reference before updating secret files. A
+missing-reference failure therefore preserves the existing materialized files,
+but services should not be restarted until the intended generation's references
+resolve successfully.
+
+See [Secret Reference Migrations and Rollback Safety](./migration-guide.md#secret-reference-migrations-and-rollback-safety)
+for the preventive deployment procedure.
 
 ### Issue: Configuration Validation Errors
 

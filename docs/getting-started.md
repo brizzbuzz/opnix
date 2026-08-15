@@ -245,6 +245,13 @@ ls -la ~/.ssh/
 ls -la ~/.config/myapp/
 ```
 
+When changing a 1Password reference, keep the old field available until the
+new generation has been verified and older generations that use the old field
+are no longer expected to be used for rollback. NixOS generations retain the
+reference, not the secret value, so an older generation cannot resolve a field
+that has already been deleted. See
+[Secret Reference Migrations and Rollback Safety](./migration-guide.md#secret-reference-migrations-and-rollback-safety).
+
 ## Platform-Specific Notes
 
 ### NixOS
