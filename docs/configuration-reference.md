@@ -271,6 +271,10 @@ services.onepassword-secrets.systemdIntegration = {
   services = ["caddy" "postgresql"];
   restartOnChange = true;
   changeDetection.enable = true;
+  polling = {
+    enable = true;
+    interval = "6h";
+  };
 };
 ```
 
@@ -306,6 +310,30 @@ services.onepassword-secrets.systemdIntegration = {
 - **Type**: `str`
 - **Default**: `"/var/lib/opnix/secret-hashes.json"`
 - **Description**: File to store secret content hashes for change detection
+
+#### `polling`
+- **Type**: `pollingOptions`
+- **Default**: `{}`
+- **Description**: NixOS-only automatic polling for remote 1Password changes
+
+##### `polling.enable`
+- **Type**: `bool`
+- **Default**: `false`
+- **Description**: Enable periodic secret retrieval through `opnix-secrets-poll.timer`
+
+##### `polling.interval`
+- **Type**: `str`
+- **Default**: `"6h"`
+- **Description**: A systemd time span used for both the first poll after boot and subsequent polls
+- **Example**: `"30min"`
+
+The normal boot-time `opnix-secrets.service` still retrieves secrets immediately.
+Polling uses a separate repeatable oneshot and the existing content hashes, so
+unchanged values do not restart managed services. Failed polls are recorded in
+journald and are retried at the next configured interval rather than in a tight
+loop. The local path watcher is suspended during each poll and restored when it
+finishes, preventing OpNix's own file operations from scheduling a duplicate
+retrieval.
 
 #### `errorHandling`
 - **Type**: `errorHandlingOptions`

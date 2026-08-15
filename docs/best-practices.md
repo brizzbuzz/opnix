@@ -182,6 +182,36 @@ services.onepassword-secrets.systemdIntegration = {
 };
 ```
 
+#### Automatic Secret Polling
+
+The path watcher only observes local file changes. Enable polling when OpNix
+must discover values changed remotely in 1Password:
+
+```nix
+services.onepassword-secrets.systemdIntegration = {
+  enable = true;
+  polling = {
+    enable = true;
+    interval = "6h";
+  };
+};
+```
+
+Boot-time retrieval remains immediate. The first timer poll runs after the
+configured interval, then repeats at that cadence. Each poll uses the normal
+content-based change detection, so managed services are restarted only when a
+materialized secret changes.
+
+Use a longer interval to reduce provider traffic. A failed poll is visible in
+`opnix-secrets-poll.service` logs and waits for the next timer activation; exit
+status `75` still indicates 1Password rate limiting. To trigger one poll after
+the rate limit clears:
+
+```bash
+sudo systemctl start opnix-secrets-poll.service
+sudo journalctl -u opnix-secrets-poll.service --since "10 minutes ago"
+```
+
 ### System Resource Management
 
 #### Memory Usage

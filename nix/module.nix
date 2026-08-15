@@ -260,6 +260,27 @@ in {
             description = "Change detection configuration";
           };
 
+          polling = lib.mkOption {
+            type = lib.types.submodule {
+              options = {
+                enable = lib.mkOption {
+                  type = lib.types.bool;
+                  default = false;
+                  description = "Periodically retrieve secrets from 1Password";
+                };
+
+                interval = lib.mkOption {
+                  type = lib.types.str;
+                  default = "6h";
+                  description = "Systemd time span between automatic secret retrievals";
+                  example = "30min";
+                };
+              };
+            };
+            default = {};
+            description = "Automatic 1Password polling configuration";
+          };
+
           errorHandling = lib.mkOption {
             type = lib.types.submodule {
               options = {
@@ -359,6 +380,89 @@ in {
         cfg.configFiles
         ++ (lib.optional hasDeclarativeSecrets declarativeConfigFile)
       );
+
+      processSecretsScript = ''
+        # Ensure output directory exists with correct permissions
+        mkdir -p ${cfg.outputDir}
+        chmod 751 ${cfg.outputDir}
+
+        # Create systemd integration directories if needed
+        ${lib.optionalString cfg.systemdIntegration.enable (
+          lib.optionalString cfg.systemdIntegration.changeDetection.enable ''
+            mkdir -p $(dirname ${cfg.systemdIntegration.changeDetection.hashFile})
+            chmod 755 $(dirname ${cfg.systemdIntegration.changeDetection.hashFile})
+          ''
+        )}
+
+        # Set up token file with correct group permissions if it exists
+        if [ -f ${cfg.tokenFile} ]; then
+          # Ensure token file has correct ownership and permissions
+          chown root:${opnixGroup} ${cfg.tokenFile}
+          chmod 640 ${cfg.tokenFile}
+        fi
+
+        # Handle missing token file gracefully - don't fail system boot
+        if [ ! -f ${cfg.tokenFile} ]; then
+          echo "WARNING: Token file ${cfg.tokenFile} does not exist!" >&2
+          echo "INFO: Using existing secrets, skipping updates" >&2
+          echo "INFO: Run 'opnix token set' to configure the token" >&2
+          exit 0
+        fi
+
+        # Validate token file permissions
+        if [ ! -r ${cfg.tokenFile} ]; then
+          echo "ERROR: Token file ${cfg.tokenFile} is not readable!" >&2
+          echo "INFO: Check file permissions or group membership" >&2
+          exit 1
+        fi
+
+        # Validate token is not empty
+        if [ ! -s ${cfg.tokenFile} ]; then
+          echo "ERROR: Token file is empty!" >&2
+          echo "INFO: Run 'opnix token set' to configure the token" >&2
+          exit 1
+        fi
+
+        # Run the secrets retrieval tool for each config file
+        ${lib.concatMapStringsSep "\n" (configFile: ''
+            echo "Processing config file: ${configFile}"
+            ${pkgsWithOverlay.opnix}/bin/opnix secret \
+              -token-file ${cfg.tokenFile} \
+              -config ${configFile} \
+              -output ${cfg.outputDir}
+          '')
+          allConfigFiles}
+
+        ${lib.optionalString cfg.systemdIntegration.enable ''
+          echo "INFO: Systemd integration enabled - services will be managed automatically"
+        ''}
+      '';
+
+      pollSecretsScript = ''
+        ${lib.optionalString cfg.systemdIntegration.changeDetection.enable ''
+          watcher_was_active=false
+          if ${pkgs.systemd}/bin/systemctl is-active --quiet opnix-secrets-watcher.path; then
+            ${pkgs.systemd}/bin/systemctl stop opnix-secrets-watcher.path
+            watcher_was_active=true
+          fi
+
+          restore_watcher() {
+            poll_status=$?
+            if [ "$watcher_was_active" = true ]; then
+              if ! ${pkgs.systemd}/bin/systemctl start opnix-secrets-watcher.path; then
+                echo "ERROR: Failed to restore opnix-secrets-watcher.path" >&2
+                if [ "$poll_status" -eq 0 ]; then
+                  poll_status=1
+                fi
+              fi
+            fi
+            exit "$poll_status"
+          }
+          trap restore_watcher EXIT
+        ''}
+
+        ${processSecretsScript}
+      '';
     in
       lib.mkMerge [
         # Validation assertions
@@ -412,62 +516,7 @@ in {
               Group = opnixGroup;
             };
 
-            script = ''
-              # Ensure output directory exists with correct permissions
-              mkdir -p ${cfg.outputDir}
-              chmod 751 ${cfg.outputDir}
-
-              # Create systemd integration directories if needed
-              ${lib.optionalString cfg.systemdIntegration.enable (
-                lib.optionalString cfg.systemdIntegration.changeDetection.enable ''
-                  mkdir -p $(dirname ${cfg.systemdIntegration.changeDetection.hashFile})
-                  chmod 755 $(dirname ${cfg.systemdIntegration.changeDetection.hashFile})
-                ''
-              )}
-
-              # Set up token file with correct group permissions if it exists
-              if [ -f ${cfg.tokenFile} ]; then
-                # Ensure token file has correct ownership and permissions
-                chown root:${opnixGroup} ${cfg.tokenFile}
-                chmod 640 ${cfg.tokenFile}
-              fi
-
-              # Handle missing token file gracefully - don't fail system boot
-              if [ ! -f ${cfg.tokenFile} ]; then
-                echo "WARNING: Token file ${cfg.tokenFile} does not exist!" >&2
-                echo "INFO: Using existing secrets, skipping updates" >&2
-                echo "INFO: Run 'opnix token set' to configure the token" >&2
-                exit 0
-              fi
-
-              # Validate token file permissions
-              if [ ! -r ${cfg.tokenFile} ]; then
-                echo "ERROR: Token file ${cfg.tokenFile} is not readable!" >&2
-                echo "INFO: Check file permissions or group membership" >&2
-                exit 1
-              fi
-
-              # Validate token is not empty
-              if [ ! -s ${cfg.tokenFile} ]; then
-                echo "ERROR: Token file is empty!" >&2
-                echo "INFO: Run 'opnix token set' to configure the token" >&2
-                exit 1
-              fi
-
-              # Run the secrets retrieval tool for each config file
-              ${lib.concatMapStringsSep "\n" (configFile: ''
-                  echo "Processing config file: ${configFile}"
-                  ${pkgsWithOverlay.opnix}/bin/opnix secret \
-                    -token-file ${cfg.tokenFile} \
-                    -config ${configFile} \
-                    -output ${cfg.outputDir}
-                '')
-                allConfigFiles}
-
-              ${lib.optionalString cfg.systemdIntegration.enable ''
-                echo "INFO: Systemd integration enabled - services will be managed automatically"
-              ''}
-            '';
+            script = processSecretsScript;
           };
         }
 
@@ -524,8 +573,34 @@ in {
                 '';
               };
             };
+
+            pollingService = lib.optionalAttrs cfg.systemdIntegration.polling.enable {
+              opnix-secrets-poll = {
+                description = "Poll 1Password for OpNix secret changes";
+                after = ["network-online.target" "nss-lookup.target"];
+                wants = ["network-online.target" "nss-lookup.target"];
+                serviceConfig = {
+                  Type = "oneshot";
+                  User = "root";
+                  Group = opnixGroup;
+                };
+                script = pollSecretsScript;
+              };
+            };
           in
-            serviceConfigs // restartService;
+            serviceConfigs // restartService // pollingService;
+
+          systemd.timers = lib.mkIf cfg.systemdIntegration.polling.enable {
+            opnix-secrets-poll = {
+              description = "Periodically poll 1Password for OpNix secret changes";
+              wantedBy = ["timers.target"];
+              timerConfig = {
+                OnActiveSec = cfg.systemdIntegration.polling.interval;
+                OnUnitActiveSec = cfg.systemdIntegration.polling.interval;
+                Unit = "opnix-secrets-poll.service";
+              };
+            };
+          };
 
           # Create a systemd path unit for change detection if enabled
           systemd.paths = lib.mkIf cfg.systemdIntegration.changeDetection.enable {
