@@ -216,6 +216,83 @@ func TestProcessorWithOwnership(t *testing.T) {
 	}
 }
 
+func TestProcessorReconcilesExistingFileMode(t *testing.T) {
+	tests := []struct {
+		name            string
+		existingContent string
+		secretContent   string
+		existingMode    os.FileMode
+		declaredMode    string
+		expectedMode    os.FileMode
+	}{
+		{
+			name:            "content and mode changed",
+			existingContent: "old-secret-value",
+			secretContent:   "new-secret-value",
+			existingMode:    0600,
+			declaredMode:    "0400",
+			expectedMode:    0400,
+		},
+		{
+			name:            "mode changed with identical content",
+			existingContent: "same-secret-value",
+			secretContent:   "same-secret-value",
+			existingMode:    0600,
+			declaredMode:    "0400",
+			expectedMode:    0400,
+		},
+		{
+			name:            "default mode restored",
+			existingContent: "same-secret-value",
+			secretContent:   "same-secret-value",
+			existingMode:    0644,
+			expectedMode:    0600,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			outputPath := filepath.Join(tmpDir, "secret")
+			if err := os.WriteFile(outputPath, []byte(tt.existingContent), tt.existingMode); err != nil {
+				t.Fatalf("Failed to create existing secret: %v", err)
+			}
+			if err := os.Chmod(outputPath, tt.existingMode); err != nil {
+				t.Fatalf("Failed to set existing secret mode: %v", err)
+			}
+
+			processor := NewProcessor(&mockClient{secrets: map[string]string{
+				"op://vault/item/field": tt.secretContent,
+			}}, tmpDir)
+			cfg := &config.Config{Secrets: []config.Secret{{
+				Path:      "secret",
+				Reference: "op://vault/item/field",
+				Mode:      tt.declaredMode,
+			}}}
+
+			if _, err := processor.Process(cfg); err != nil {
+				t.Fatalf("Failed to process existing secret: %v", err)
+			}
+
+			content, err := os.ReadFile(outputPath)
+			if err != nil {
+				t.Fatalf("Failed to read processed secret: %v", err)
+			}
+			if string(content) != tt.secretContent {
+				t.Errorf("Expected secret content %q, got %q", tt.secretContent, string(content))
+			}
+
+			info, err := os.Stat(outputPath)
+			if err != nil {
+				t.Fatalf("Failed to stat processed secret: %v", err)
+			}
+			if info.Mode().Perm() != tt.expectedMode {
+				t.Errorf("Expected permissions %04o, got %04o", tt.expectedMode, info.Mode().Perm())
+			}
+		})
+	}
+}
+
 func TestProcessorModeValidation(t *testing.T) {
 	// Create mock client
 	mock := &mockClient{

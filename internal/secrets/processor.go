@@ -171,6 +171,16 @@ func (p *Processor) processSecret(secret config.Secret, secretName, value string
 		}
 	}
 
+	// WriteFile preserves permissions for existing files, so reconcile the declared mode explicitly.
+	if err := os.Chmod(outputPath, os.FileMode(fileMode)); err != nil {
+		return "", errors.FileOperationError(
+			fmt.Sprintf("Setting permissions for %s", secretName),
+			outputPath,
+			fmt.Sprintf("Failed to change permissions to %s", mode),
+			err,
+		)
+	}
+
 	// Create symlinks if specified
 	if err := p.createSymlinks(outputPath, secret.Symlinks, secretName); err != nil {
 		return "", err
