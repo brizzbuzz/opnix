@@ -231,6 +231,11 @@ When using advanced service configuration (NixOS only), each service supports:
 
 Prefer ordering managed services with `After=opnix-secrets.service` and `Wants=opnix-secrets.service`. Avoid `Requires=opnix-secrets.service` unless the service must fail hard when OpNix fails; hard requirements can deadlock if OpNix triggers a restart while the managed service is ordered after `opnix-secrets.service`.
 
+`opnix-secrets.service` does not automatically restart after exit status `65`
+(missing, invalid, or ambiguous references) or `75` (1Password rate limiting).
+These conditions require configuration repair or waiting for the provider reset
+window rather than repeated systemd starts.
+
 ### Path Template Configuration
 
 #### `pathTemplate`

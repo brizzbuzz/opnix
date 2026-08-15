@@ -468,6 +468,29 @@ ERROR: request timeout after 30 seconds
    };
    ```
 
+### Issue: 1Password Rate Limit Exceeded
+
+**Symptoms:**
+
+- OpNix reports that the 1Password rate limit was exceeded.
+- `opnix-secrets.service` exits with status `75`.
+- systemd does not automatically restart the service.
+
+Exit status `75` is deliberately included in `RestartPreventExitStatus`. Retrying
+immediately would consume more provider capacity and can exhaust the service's
+systemd start limit without resolving the failure.
+
+Wait for the 1Password rate limit to clear, then retry once:
+
+```bash
+sudo systemctl restart opnix-secrets.service
+sudo systemctl status opnix-secrets.service
+```
+
+If the service remains rate-limited, wait for the next reset window rather than
+looping manual restarts. Existing secret files remain available because OpNix
+resolves all references before updating them.
+
 ## Configuration Issues
 
 ### Issue: Invalid 1Password Reference

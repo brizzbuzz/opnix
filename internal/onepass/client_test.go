@@ -205,3 +205,24 @@ func TestResolveSecretDoesNotRetryMissingReference(t *testing.T) {
 		t.Fatalf("expected exit code %d, got %d", opnixerrors.ExitCodeMissingReference, code)
 	}
 }
+
+func TestResolveSecretDoesNotRetryRateLimit(t *testing.T) {
+	attempts := 0
+	client := &Client{
+		secrets: fakeSecretsAPI{resolveAll: func(_ context.Context, _ []string) (onepassword.ResolveAllResponse, error) {
+			attempts++
+			return onepassword.ResolveAllResponse{}, &onepassword.RateLimitExceededError{}
+		}},
+	}
+
+	_, err := client.ResolveSecret("op://vault/item/field")
+	if err == nil {
+		t.Fatal("expected rate limit error")
+	}
+	if attempts != 1 {
+		t.Fatalf("expected rate-limited reference to be attempted once, got %d attempts", attempts)
+	}
+	if code := opnixerrors.ExitCode(err); code != opnixerrors.ExitCodeRateLimited {
+		t.Fatalf("expected exit code %d, got %d", opnixerrors.ExitCodeRateLimited, code)
+	}
+}
