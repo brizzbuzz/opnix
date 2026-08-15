@@ -84,6 +84,7 @@ Set up your token:
 ```bash
 sudo nixos-rebuild switch --flake .
 sudo opnix token set
+sudo systemctl restart opnix-secrets.service
 ```
 
 > **Note:** On NixOS, `opnix` is automatically added to `environment.systemPackages` once
