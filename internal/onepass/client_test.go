@@ -5,6 +5,7 @@ import (
 	stderrors "errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,35 @@ import (
 type fakeSecretsAPI struct {
 	resolve    func(context.Context, string) (string, error)
 	resolveAll func(context.Context, []string) (onepassword.ResolveAllResponse, error)
+}
+
+type fakeVaultsAPI struct {
+	list func(context.Context, ...onepassword.VaultListParams) ([]onepassword.VaultOverview, error)
+}
+
+func (f fakeVaultsAPI) List(ctx context.Context, params ...onepassword.VaultListParams) ([]onepassword.VaultOverview, error) {
+	return f.list(ctx, params...)
+}
+
+type fakeItemsAPI struct {
+	list func(context.Context, string, ...onepassword.ItemListFilter) ([]onepassword.ItemOverview, error)
+	get  func(context.Context, string, string) (onepassword.Item, error)
+}
+
+func (f fakeItemsAPI) List(ctx context.Context, vaultID string, filters ...onepassword.ItemListFilter) ([]onepassword.ItemOverview, error) {
+	return f.list(ctx, vaultID, filters...)
+}
+
+func (f fakeItemsAPI) Get(ctx context.Context, vaultID, itemID string) (onepassword.Item, error) {
+	return f.get(ctx, vaultID, itemID)
+}
+
+type fakeFilesAPI struct {
+	read func(context.Context, string, string, onepassword.FileAttributes) ([]byte, error)
+}
+
+func (f fakeFilesAPI) Read(ctx context.Context, vaultID, itemID string, attr onepassword.FileAttributes) ([]byte, error) {
+	return f.read(ctx, vaultID, itemID, attr)
 }
 
 func (f fakeSecretsAPI) Resolve(ctx context.Context, reference string) (string, error) {
@@ -93,10 +123,10 @@ func TestGetToken(t *testing.T) {
 }
 
 func TestNewClientRetriesTransientInitializationFailures(t *testing.T) {
-	originalNewSDKSecrets := newSDKSecrets
+	originalNewSDKClient := newSDKClient
 	originalRetrySleep := retrySleep
 	t.Cleanup(func() {
-		newSDKSecrets = originalNewSDKSecrets
+		newSDKClient = originalNewSDKClient
 		retrySleep = originalRetrySleep
 		os.Unsetenv("OP_SERVICE_ACCOUNT_TOKEN")
 	})
@@ -105,17 +135,17 @@ func TestNewClientRetriesTransientInitializationFailures(t *testing.T) {
 	retrySleep = func(_ time.Duration) {}
 
 	attempts := 0
-	newSDKSecrets = func(_ context.Context, token string) (sdkSecretsAPI, error) {
+	newSDKClient = func(_ context.Context, token string) (sdkAPIs, error) {
 		attempts++
 		if token != "ops_test_token" {
 			t.Fatalf("expected token to be passed through")
 		}
 		if attempts < 3 {
-			return nil, stderrors.New("transient auth failure")
+			return sdkAPIs{}, stderrors.New("transient auth failure")
 		}
-		return fakeSecretsAPI{resolve: func(_ context.Context, reference string) (string, error) {
+		return sdkAPIs{secrets: fakeSecretsAPI{resolve: func(_ context.Context, reference string) (string, error) {
 			return "resolved:" + reference, nil
-		}}, nil
+		}}}, nil
 	}
 
 	client, err := NewClient("")
@@ -224,5 +254,141 @@ func TestResolveSecretDoesNotRetryRateLimit(t *testing.T) {
 	}
 	if code := opnixerrors.ExitCode(err); code != opnixerrors.ExitCodeRateLimited {
 		t.Fatalf("expected exit code %d, got %d", opnixerrors.ExitCodeRateLimited, code)
+	}
+}
+
+func TestResolveFilesReadsDocumentsAndAttachments(t *testing.T) {
+	tests := []struct {
+		name      string
+		reference string
+		vault     onepassword.VaultOverview
+		overview  onepassword.ItemOverview
+		item      onepassword.Item
+		wantAttr  onepassword.FileAttributes
+	}{
+		{
+			name:      "document by titles",
+			reference: "op://Personal/SSH%20Key/id_ed25519",
+			vault:     onepassword.VaultOverview{ID: "vault-id", Title: "Personal"},
+			overview:  onepassword.ItemOverview{ID: "document-id", Title: "SSH Key"},
+			item: onepassword.Item{ID: "document-id", Title: "SSH Key", Document: &onepassword.FileAttributes{
+				ID: "document-file-id", Name: "id_ed25519", Size: 6,
+			}},
+			wantAttr: onepassword.FileAttributes{ID: "document-file-id", Name: "id_ed25519", Size: 6},
+		},
+		{
+			name:      "attachment by vault and item IDs",
+			reference: "op://vault-id/item-id/client.p12",
+			vault:     onepassword.VaultOverview{ID: "vault-id", Title: "Certificates"},
+			overview:  onepassword.ItemOverview{ID: "item-id", Title: "Client Certificate"},
+			item: onepassword.Item{ID: "item-id", Title: "Client Certificate", Files: []onepassword.ItemFile{{
+				Attributes: onepassword.FileAttributes{ID: "attachment-id", Name: "client.p12", Size: 6},
+			}}},
+			wantAttr: onepassword.FileAttributes{ID: "attachment-id", Name: "client.p12", Size: 6},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			want := []byte{0x00, 0xff, 0xfe, 0x80, 0x01, '\n'}
+			client := &Client{
+				vaults: fakeVaultsAPI{list: func(context.Context, ...onepassword.VaultListParams) ([]onepassword.VaultOverview, error) {
+					return []onepassword.VaultOverview{tt.vault}, nil
+				}},
+				items: fakeItemsAPI{
+					list: func(_ context.Context, vaultID string, _ ...onepassword.ItemListFilter) ([]onepassword.ItemOverview, error) {
+						if vaultID != tt.vault.ID {
+							t.Fatalf("Unexpected vault ID %q", vaultID)
+						}
+						return []onepassword.ItemOverview{tt.overview}, nil
+					},
+					get: func(_ context.Context, vaultID, itemID string) (onepassword.Item, error) {
+						if vaultID != tt.vault.ID || itemID != tt.overview.ID {
+							t.Fatalf("Unexpected item lookup %q/%q", vaultID, itemID)
+						}
+						return tt.item, nil
+					},
+				},
+				files: fakeFilesAPI{read: func(_ context.Context, vaultID, itemID string, attr onepassword.FileAttributes) ([]byte, error) {
+					if vaultID != tt.vault.ID || itemID != tt.overview.ID || attr != tt.wantAttr {
+						t.Fatalf("Unexpected file read %q/%q %#v", vaultID, itemID, attr)
+					}
+					return want, nil
+				}},
+			}
+
+			resolved, err := client.ResolveFiles([]string{tt.reference})
+			if err != nil {
+				t.Fatalf("Failed to resolve file: %v", err)
+			}
+			if got := resolved[tt.reference]; string(got) != string(want) {
+				t.Fatalf("File bytes changed: got %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestResolveFilesClassifiesSelectorFailures(t *testing.T) {
+	t.Run("ambiguous vault", func(t *testing.T) {
+		client := &Client{vaults: fakeVaultsAPI{list: func(context.Context, ...onepassword.VaultListParams) ([]onepassword.VaultOverview, error) {
+			return []onepassword.VaultOverview{{ID: "one", Title: "Shared"}, {ID: "two", Title: "Shared"}}, nil
+		}}}
+		_, err := client.ResolveFiles([]string{"op://Shared/Item/file.bin"})
+		if err == nil || opnixerrors.ExitCode(err) != opnixerrors.ExitCodeMissingReference {
+			t.Fatalf("Expected ambiguous reference exit %d, got %v", opnixerrors.ExitCodeMissingReference, err)
+		}
+	})
+
+	t.Run("rate limit", func(t *testing.T) {
+		attempts := 0
+		client := &Client{vaults: fakeVaultsAPI{list: func(context.Context, ...onepassword.VaultListParams) ([]onepassword.VaultOverview, error) {
+			attempts++
+			return nil, &onepassword.RateLimitExceededError{}
+		}}}
+		_, err := client.ResolveFiles([]string{"op://Vault/Item/file.bin"})
+		if err == nil || opnixerrors.ExitCode(err) != opnixerrors.ExitCodeRateLimited {
+			t.Fatalf("Expected rate-limit exit %d, got %v", opnixerrors.ExitCodeRateLimited, err)
+		}
+		if attempts != 1 {
+			t.Fatalf("Expected one rate-limited attempt, got %d", attempts)
+		}
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		client := &Client{
+			vaults: fakeVaultsAPI{list: func(context.Context, ...onepassword.VaultListParams) ([]onepassword.VaultOverview, error) {
+				return []onepassword.VaultOverview{{ID: "vault-id", Title: "Vault"}}, nil
+			}},
+			items: fakeItemsAPI{
+				list: func(context.Context, string, ...onepassword.ItemListFilter) ([]onepassword.ItemOverview, error) {
+					return []onepassword.ItemOverview{{ID: "item-id", Title: "Item"}}, nil
+				},
+				get: func(context.Context, string, string) (onepassword.Item, error) {
+					return onepassword.Item{ID: "item-id", Title: "Item"}, nil
+				},
+			},
+		}
+		_, err := client.ResolveFiles([]string{"op://Vault/Item/missing.bin"})
+		if err == nil || opnixerrors.ExitCode(err) != opnixerrors.ExitCodeMissingReference {
+			t.Fatalf("Expected missing reference exit %d, got %v", opnixerrors.ExitCodeMissingReference, err)
+		}
+	})
+
+	t.Run("invalid reference", func(t *testing.T) {
+		client := &Client{vaults: fakeVaultsAPI{list: func(context.Context, ...onepassword.VaultListParams) ([]onepassword.VaultOverview, error) {
+			return nil, nil
+		}}}
+		_, err := client.ResolveFiles([]string{"op://Vault/Item/Section/file.bin"})
+		if err == nil || opnixerrors.ExitCode(err) != opnixerrors.ExitCodeMissingReference {
+			t.Fatalf("Expected invalid reference exit %d, got %v", opnixerrors.ExitCodeMissingReference, err)
+		}
+	})
+}
+
+func TestUnsupportedFileFormatSuggestsFileKind(t *testing.T) {
+	sdkErr := onepassword.NewResolveReferenceErrorTypeVariantUnsupportedFileFormat()
+	err := classifyResolveReferenceError("op://Vault/Item/file.bin", sdkErr)
+	if !strings.Contains(err.Error(), `kind = "file"`) {
+		t.Fatalf("Expected file-kind guidance, got %v", err)
 	}
 }

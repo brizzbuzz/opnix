@@ -8,9 +8,17 @@ import (
 	"github.com/brizzbuzz/opnix/internal/validation"
 )
 
+type SecretKind string
+
+const (
+	SecretKindField SecretKind = "field"
+	SecretKindFile  SecretKind = "file"
+)
+
 type Secret struct {
 	Path      string            `json:"path"`
 	Reference string            `json:"reference"`
+	Kind      SecretKind        `json:"kind,omitempty"`
 	Owner     string            `json:"owner,omitempty"`
 	Group     string            `json:"group,omitempty"`
 	Mode      string            `json:"mode,omitempty"`
@@ -52,6 +60,7 @@ func (c *Config) convertToValidationSecrets() []validation.SecretData {
 		secrets[i] = validation.SecretData{
 			Path:         s.Path,
 			Reference:    s.Reference,
+			Kind:         string(s.Kind),
 			Owner:        s.Owner,
 			Group:        s.Group,
 			Mode:         s.Mode,
@@ -84,6 +93,11 @@ func Load(path string) (*Config, error) {
 			"Invalid JSON format in config file",
 			err,
 		)
+	}
+	for i := range config.Secrets {
+		if config.Secrets[i].Kind == "" {
+			config.Secrets[i].Kind = SecretKindField
+		}
 	}
 
 	// Validate the loaded configuration

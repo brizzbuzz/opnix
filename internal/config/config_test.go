@@ -42,6 +42,55 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+func TestLoadSecretKind(t *testing.T) {
+	tests := []struct {
+		name     string
+		kindJSON string
+		want     SecretKind
+		wantErr  bool
+	}{
+		{name: "defaults to field", want: SecretKindField},
+		{name: "accepts field", kindJSON: `, "kind": "field"`, want: SecretKindField},
+		{name: "accepts file", kindJSON: `, "kind": "file"`, want: SecretKindFile},
+		{name: "rejects unknown kind", kindJSON: `, "kind": "document"`, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.json")
+			configData := `{"secrets":[{"path":"test/secret","reference":"op://vault/item/value"` + tt.kindJSON + `}]}`
+			if err := os.WriteFile(configPath, []byte(configData), 0600); err != nil {
+				t.Fatalf("Failed to write config: %v", err)
+			}
+
+			cfg, err := Load(configPath)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("Expected invalid kind error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Failed to load config: %v", err)
+			}
+			if got := cfg.Secrets[0].Kind; got != tt.want {
+				t.Fatalf("Expected kind %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestLoadFileKindRequiresFilenameReference(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	configData := `{"secrets":[{"path":"test/file","reference":"op://vault/item/section/file.bin","kind":"file"}]}`
+	if err := os.WriteFile(configPath, []byte(configData), 0600); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+	if _, err := Load(configPath); err == nil {
+		t.Fatal("Expected file reference with more than three components to fail validation")
+	}
+}
+
 func TestLoadMultiple(t *testing.T) {
 	// Create temp config files
 	tmpDir, err := os.MkdirTemp("", "opnix-tests-*")
