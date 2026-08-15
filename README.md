@@ -82,9 +82,16 @@ programs.onepassword-secrets = {
 Set up your token:
 
 ```bash
-sudo opnix token set
 sudo nixos-rebuild switch --flake .
+sudo opnix token set
+sudo systemctl restart opnix-secrets.service
 ```
+
+> **Note:** On NixOS, `opnix` is automatically added to `environment.systemPackages` once
+> `services.onepassword-secrets.enable = true` and you rebuild — no separate CLI install or
+> overlay needed. If you previously added `opnix` manually on NixOS, that entry is now
+> redundant and can be removed. (On nix-darwin and Home Manager, CLI installation is
+> unchanged.)
 
 ## Documentation
 
