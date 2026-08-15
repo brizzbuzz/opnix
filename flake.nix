@@ -30,7 +30,7 @@
       };
 
       checks =
-        import ./nix/checks.nix {inherit pkgs src vendorHash;}
+        import ./nix/checks.nix {inherit pkgs nixpkgs system src vendorHash;}
         // {
           build = buildOpnix;
         };
