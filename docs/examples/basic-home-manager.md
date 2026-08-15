@@ -305,17 +305,16 @@ If you prefer to use a user-specific token instead of the system token:
     };
   };
 
-  # Development environment variables
-  home.sessionVariables = {
-    # Reference OpNix-managed secrets in environment
-    GITHUB_TOKEN = "$(cat ${config.home.homeDirectory}/.config/tokens/github)";
-    OPENAI_API_KEY = "$(cat ${config.home.homeDirectory}/.config/tokens/openai)";
-    DATABASE_URL = "$(cat ${config.home.homeDirectory}/.config/dev/database-url)";
-  };
-
-  # Development packages that might use the secrets
+  # Read a secret only when the command runs. home.sessionVariables would store
+  # "$(cat ...)" literally; Home Manager does not evaluate shell substitutions.
   home.packages = with pkgs; [
-    gh              # GitHub CLI (uses GitHub token)
+    (writeShellScriptBin "gh-with-opnix" ''
+      export GH_TOKEN="$(${coreutils}/bin/cat ${config.programs.onepassword-secrets.secretPaths.githubToken})"
+      exec ${gh}/bin/gh "$@"
+    '')
+
+    # Development packages that might use the secrets
+    gh              # Invoke gh-with-opnix when GH_TOKEN is required
     docker          # Docker (uses Docker Hub token)
     awscli2         # AWS CLI (uses AWS credentials)
     nodejs          # Node.js (uses .npmrc)

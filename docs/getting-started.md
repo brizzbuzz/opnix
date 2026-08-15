@@ -301,27 +301,17 @@ services.onepassword-secrets.secrets = {
 };
 ```
 
-### Database Credentials
+### Consumers That Require Inline Credentials
 
-```nix
-services.onepassword-secrets.secrets = {
-  postgresPassword = {
-    reference = "op://Homelab/Database/password";
-    owner = "postgres";
-    group = "postgres";
-    services = ["postgresql"];
-  };
-};
+Nix-generated files such as `services.postgresql.initialScript` are written to
+the Nix store. Shell expressions like `$(cat /path/to/secret)` are not expanded
+inside those files and must not be used to embed OpNix values during evaluation.
 
-# Reference the secret in your PostgreSQL config
-services.postgresql = {
-  enable = true;
-  authentication = "local all all trust";
-  initialScript = pkgs.writeText "init.sql" ''
-    ALTER USER postgres PASSWORD '$(cat ${config.services.onepassword-secrets.secretPaths.postgresPassword})';
-  '';
-};
-```
+Prefer application options that accept a credential file. If an application
+requires an inline value, generate or update its configuration outside the Nix
+store during service startup or activation, after OpNix has materialized the
+secret. Keep the generated file permissions restrictive and do not log its
+contents.
 
 ### API Keys for Services
 

@@ -72,7 +72,12 @@ services.onepassword-secrets = {
 - **Type**: `attrsOf str`
 - **Default**: `{}`
 - **Description**: Computed paths for declarative secrets (automatically populated)
-- **Notes**: This option provides declarative references to secret file paths for use in other configuration sections
+- **Notes**: Values are runtime file paths, not secret values. OpNix creates the files during activation or service execution, after Nix evaluation has finished.
+
+Use these paths only with consumers that read files at runtime. Do not pass an
+OpNix path to `builtins.readFile`: pure evaluation cannot access the mutable
+runtime file, and embedding its contents in evaluated configuration could copy
+the secret into the Nix store, derivations, logs, or generation metadata.
 
 #### `users` (NixOS only)
 - **Type**: `listOf str`
@@ -488,24 +493,36 @@ op://VaultName/ItemName/FieldName
 
 OpNix automatically generates path references that can be used in other parts of your configuration:
 
-### System Configuration (NixOS/nix-darwin)
+### System Configuration (NixOS)
 
 ```nix
-# Access secret paths in your configuration
-services.postgresql = {
+services.onepassword-secrets = {
   enable = true;
-  initialScript = pkgs.writeText "init.sql" ''
-    ALTER USER postgres PASSWORD '$(cat ${config.services.onepassword-secrets.secretPaths.databasePassword})';
-  '';
+  secrets = {
+    sslCert = {
+      reference = "op://Homelab/SSL/certificate";
+      owner = "caddy";
+      group = "caddy";
+      mode = "0440";
+      services = ["caddy"];
+    };
+    sslKey = {
+      reference = "op://Homelab/SSL/private-key";
+      owner = "caddy";
+      group = "caddy";
+      mode = "0400";
+      services = ["caddy"];
+    };
+  };
 };
 
+# Caddy reads the certificate and key from these paths at runtime.
 services.caddy = {
   enable = true;
   virtualHosts."example.com" = {
-    tls = {
-      cert = config.services.onepassword-secrets.secretPaths.sslCert;
-      key = config.services.onepassword-secrets.secretPaths.sslKey;
-    };
+    extraConfig = ''
+      tls ${config.services.onepassword-secrets.secretPaths.sslCert} ${config.services.onepassword-secrets.secretPaths.sslKey}
+    '';
   };
 };
 ```
@@ -513,16 +530,34 @@ services.caddy = {
 ### Home Manager Configuration
 
 ```nix
-# Access secret paths in Home Manager
+programs.onepassword-secrets = {
+  enable = true;
+  secrets.gitSigningKey = {
+    reference = "op://Personal/Git/signing-key";
+    path = ".ssh/git_signing_key";
+    mode = "0600";
+  };
+};
+
+# Git reads the private key from this path when it signs a commit.
 programs.git = {
   enable = true;
   extraConfig = {
+    gpg.format = "ssh";
+    commit.gpgsign = true;
     user = {
-      signingkey = builtins.readFile config.programs.onepassword-secrets.secretPaths.gitSigningKey;
+      signingkey = config.programs.onepassword-secrets.secretPaths.gitSigningKey;
     };
   };
 };
 ```
+
+`secretPaths` cannot expose secret contents as Nix strings. Nix evaluates Home
+Manager configuration before OpNix retrieves secrets, and evaluated strings are
+often serialized into world-readable store paths. If an application requires an
+inline value rather than a file path or runtime command, generate that
+application's configuration outside the Nix store during activation or service
+startup. OpNix does not currently provide runtime template rendering.
 
 ## Service Integration
 
