@@ -106,7 +106,8 @@ programs.onepassword-secrets = {
   
   secrets = {
     sshPrivateKey = {
-      reference = "op://Personal/SSH/private-key";
+      reference = "op://Personal/SSH/id_ed25519";
+      kind = "file";
       path = ".ssh/id_rsa";
       mode = "0600";
     };

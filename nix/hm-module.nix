@@ -57,8 +57,14 @@
 
       reference = lib.mkOption {
         type = lib.types.str;
-        description = "1Password reference in the format op://vault/item/field";
+        description = "1Password reference in the format op://vault/item/field or op://vault/item/filename";
         example = "op://Personal/ssh-key/private-key";
+      };
+
+      kind = lib.mkOption {
+        type = lib.types.enum ["field" "file"];
+        default = "field";
+        description = "Whether to resolve a text field or download a Document/attachment as raw bytes";
       };
 
       owner = lib.mkOption {
@@ -121,6 +127,7 @@ in {
       example = {
         sshPrivateKey = {
           reference = "op://Personal/SSH/private-key";
+          kind = "file";
           path = ".ssh/id_rsa";
           mode = "0600";
         };
@@ -180,6 +187,7 @@ in {
                   then secret.path
                   else name;
                 reference = secret.reference;
+                kind = secret.kind;
                 owner = secret.owner;
                 group = secret.group;
                 mode = secret.mode;

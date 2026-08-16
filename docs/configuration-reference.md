@@ -123,6 +123,11 @@ services.onepassword-secrets.secrets = {
       owner = "caddy";
       mode = "0644";
     };
+    encryptedKey = {
+      reference = "op://Homelab/Keys/server.age";
+      kind = "file";
+      path = "/etc/keys/server.age";
+    };
   };
 ```
 
@@ -140,6 +145,12 @@ Each secret in the `secrets` attribute set supports these options:
 - **Type**: `str`
 - **Description**: 1Password reference in the format `op://Vault/Item/field` or `op://Vault/Item/Section/field`
 - **Example**: `"op://Homelab/Database/password"` or `"op://Homelab/SSL Certs/example.com/cert"`
+
+#### `kind`
+- **Type**: `enum ["field" "file"]`
+- **Default**: `"field"`
+- **Description**: Resolve a text field or download a Document/attachment as raw bytes
+- **Notes**: File references use exactly `op://Vault/Item/filename`; see [Binary Documents and Attachments](#binary-documents-and-attachments)
 
 #### `path`
 - **Type**: `nullOr str`
@@ -400,7 +411,8 @@ programs.onepassword-secrets = {
 ```nix
 programs.onepassword-secrets.secrets = {
   sshPrivateKey = {
-    reference = "op://Personal/SSH/private-key";
+    reference = "op://Personal/SSH/id_ed25519";
+    kind = "file";
     path = ".ssh/id_rsa";
     mode = "0600";
   };
@@ -413,6 +425,11 @@ programs.onepassword-secrets.secrets = {
 - **Type**: `str`
 - **Description**: 1Password reference
 - **Example**: `"op://Personal/SSH/private-key"`
+
+#### `kind`
+- **Type**: `enum ["field" "file"]`
+- **Default**: `"field"`
+- **Description**: Resolve a text field or download a Document/attachment as raw bytes
 
 #### `path`
 - **Type**: `nullOr str`
@@ -457,6 +474,12 @@ When using `configFiles`, each JSON file should follow this structure:
       "owner": "caddy",
       "group": "caddy",
       "mode": "0644"
+    },
+    {
+      "path": "keys/server.age",
+      "reference": "op://Vault/Keys/server.age",
+      "kind": "file",
+      "mode": "0600"
     }
   ]
 }
@@ -467,6 +490,7 @@ When using `configFiles`, each JSON file should follow this structure:
 - `reference`: 1Password reference
 
 **Optional fields:**
+- `kind`: `"field"` (default) or `"file"`
 - `owner`: File owner (default: "root" for system, username for Home Manager)
 - `group`: File group (default: "root" for system, "users" for Home Manager)
 - `mode`: File permissions (default: "0600")
@@ -488,6 +512,27 @@ op://VaultName/ItemName/FieldName
 - `username`: The item's username field
 - `notes`: The item's notes field
 - Custom field names as defined in 1Password
+
+### Binary Documents and Attachments
+
+Set `kind = "file"` to retrieve bytes through the 1Password SDK file API. This
+supports both Document-category items and files attached to ordinary items. The
+reference must have exactly three components:
+
+```text
+op://Vault/Item/filename
+```
+
+Vault and item selectors match an exact title or ID. The filename matches the
+Document name or attachment name exactly. Missing and ambiguous selectors fail
+with exit status `65`; OpNix never falls back from field resolution to file
+resolution automatically. Percent-encode special characters within individual
+components.
+
+All field and file references are resolved before any secret file is written,
+so a failed download leaves existing files unchanged. File contents remain raw
+bytes for materialization and change detection. The 1Password SDK limits file
+operations to 50 MB; larger files are not supported.
 
 ## Secret Path References
 

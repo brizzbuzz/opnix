@@ -2,6 +2,7 @@ package validation
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"os/user"
 	"regexp"
@@ -23,6 +24,7 @@ func NewValidator() *Validator {
 type SecretData struct {
 	Path         string
 	Reference    string
+	Kind         string
 	Owner        string
 	Group        string
 	Mode         string
@@ -58,9 +60,18 @@ func (v *Validator) ValidateConfigStruct(secrets []SecretData) error {
 
 // validateSecret validates individual secret configuration
 func (v *Validator) validateSecret(secret SecretData, secretName string, seenPaths map[string]string) error {
+	if err := v.validateKind(secret.Kind, secretName); err != nil {
+		return err
+	}
+
 	// Validate reference
 	if err := v.validateReference(secret.Reference, secretName); err != nil {
 		return err
+	}
+	if secret.Kind == "file" {
+		if err := v.validateFileReference(secret.Reference, secretName); err != nil {
+			return err
+		}
 	}
 
 	// Validate path and resolve final path
@@ -88,6 +99,42 @@ func (v *Validator) validateSecret(secret SecretData, secretName string, seenPat
 		return err
 	}
 
+	return nil
+}
+
+func (v *Validator) validateKind(kind, secretName string) error {
+	if kind == "" || kind == "field" || kind == "file" {
+		return nil
+	}
+	return errors.ConfigValidationError(
+		fmt.Sprintf("%s.kind", secretName),
+		kind,
+		"Kind must be field or file",
+		[]string{"Use field for text values", "Use file for Documents and attachments"},
+	)
+}
+
+func (v *Validator) validateFileReference(reference, secretName string) error {
+	parts := strings.Split(strings.TrimPrefix(reference, "op://"), "/")
+	if len(parts) != 3 {
+		return errors.ConfigValidationError(
+			fmt.Sprintf("%s.reference", secretName),
+			reference,
+			"File references must have exactly 3 parts: vault/item/filename",
+			[]string{"Use format: op://Vault/Item/filename", "Remove section or field selectors from file references"},
+		)
+	}
+	for _, part := range parts {
+		decoded, err := url.PathUnescape(part)
+		if err != nil || decoded == "" {
+			return errors.ConfigValidationError(
+				fmt.Sprintf("%s.reference", secretName),
+				reference,
+				"File reference contains an invalid or empty component",
+				[]string{"Percent-encode special characters in vault, item, and filename components"},
+			)
+		}
+	}
 	return nil
 }
 

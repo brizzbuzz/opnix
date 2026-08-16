@@ -154,6 +154,35 @@ func TestHashStoreChangeDetection(t *testing.T) {
 	}
 }
 
+func TestHashStoreDetectsBinaryChanges(t *testing.T) {
+	tempDir := t.TempDir()
+	secretPath := filepath.Join(tempDir, "binary-secret")
+	store, err := NewHashStore(filepath.Join(tempDir, "hashes.json"))
+	if err != nil {
+		t.Fatalf("Failed to create hash store: %v", err)
+	}
+
+	first := []byte{0x00, 0xff, 0xfe, 0x80, 0x01}
+	if err := os.WriteFile(secretPath, first, 0600); err != nil {
+		t.Fatalf("Failed to write binary secret: %v", err)
+	}
+	if changed, err := store.hasChanged(secretPath); err != nil || !changed {
+		t.Fatalf("Expected initial binary content to be detected, changed=%v err=%v", changed, err)
+	}
+	if changed, err := store.hasChanged(secretPath); err != nil || changed {
+		t.Fatalf("Expected identical binary content to be unchanged, changed=%v err=%v", changed, err)
+	}
+
+	second := append([]byte(nil), first...)
+	second[2] = 0xfd
+	if err := os.WriteFile(secretPath, second, 0600); err != nil {
+		t.Fatalf("Failed to update binary secret: %v", err)
+	}
+	if changed, err := store.hasChanged(secretPath); err != nil || !changed {
+		t.Fatalf("Expected binary byte change to be detected, changed=%v err=%v", changed, err)
+	}
+}
+
 func TestExtractServiceActions(t *testing.T) {
 	cfg := mockSystemdIntegration()
 	manager := &Manager{config: cfg}

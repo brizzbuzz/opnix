@@ -60,7 +60,8 @@ Fields:
     secrets = {
       # SSH private key
       sshPrivateKey = {
-        reference = "op://Personal/SSH-Key-Main/private-key";
+        reference = "op://Personal/SSH-Key-Main/id_rsa";
+        kind = "file";
         path = ".ssh/id_rsa";
         mode = "0600";
       };

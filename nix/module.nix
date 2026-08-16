@@ -77,8 +77,14 @@ in {
         options = {
           reference = lib.mkOption {
             type = lib.types.str;
-            description = "1Password reference in the format op://Vault/Item/field";
+            description = "1Password reference in the format op://Vault/Item/field or op://Vault/Item/filename";
             example = "op://Homelab/Database/password";
+          };
+
+          kind = lib.mkOption {
+            type = lib.types.enum ["field" "file"];
+            default = "field";
+            description = "Whether to resolve a text field or download a Document/attachment as raw bytes";
           };
 
           path = lib.mkOption {
@@ -361,6 +367,7 @@ in {
                   then secret.path
                   else name;
                 reference = secret.reference;
+                kind = secret.kind;
                 owner = secret.owner;
                 group = secret.group;
                 mode = secret.mode;

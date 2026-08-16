@@ -15,8 +15,27 @@ import (
 // Mock client for testing
 type mockClient struct {
 	secrets      map[string]string
+	files        map[string][]byte
 	resolveCalls map[string]int
 	resolveErr   error
+	fileErr      error
+	fileCalls    int
+}
+
+func (m *mockClient) ResolveFiles(references []string) (map[string][]byte, error) {
+	m.fileCalls++
+	if m.fileErr != nil {
+		return nil, m.fileErr
+	}
+	resolved := make(map[string][]byte, len(references))
+	for _, reference := range references {
+		value, ok := m.files[reference]
+		if !ok {
+			return nil, fmt.Errorf("file not found")
+		}
+		resolved[reference] = value
+	}
+	return resolved, nil
 }
 
 func (m *mockClient) ResolveSecret(reference string) (string, error) {
@@ -142,6 +161,91 @@ func TestProcessor(t *testing.T) {
 	}
 }
 
+func TestProcessorWritesBinaryFileExactly(t *testing.T) {
+	const reference = "op://vault/document/private-key"
+	want := []byte{0x00, 0xff, 0xfe, '\n', 0x80, 0x01}
+	tmpDir := t.TempDir()
+	processor := NewProcessor(&mockClient{files: map[string][]byte{reference: want}}, tmpDir)
+
+	_, err := processor.Process(&config.Config{Secrets: []config.Secret{{
+		Path:      "keys/private.key",
+		Reference: reference,
+		Kind:      config.SecretKindFile,
+	}}})
+	if err != nil {
+		t.Fatalf("Failed to process binary file: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(tmpDir, "keys/private.key"))
+	if err != nil {
+		t.Fatalf("Failed to read binary output: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("Binary output changed: got %v, want %v", got, want)
+	}
+}
+
+func TestProcessorResolvesAllKindsBeforeWrites(t *testing.T) {
+	const (
+		fieldReference = "op://vault/item/password"
+		fileReference  = "op://vault/item/private-key"
+	)
+	tmpDir := t.TempDir()
+	existingPath := filepath.Join(tmpDir, "password")
+	if err := os.WriteFile(existingPath, []byte("existing-password"), 0600); err != nil {
+		t.Fatalf("Failed to create existing secret: %v", err)
+	}
+	fileErr := &errors.ProviderResolutionError{Failures: []*errors.ProviderError{{
+		Kind:      errors.ProviderErrorMissingReference,
+		Reference: fileReference,
+		Issue:     "file not found",
+	}}}
+	processor := NewProcessor(&mockClient{
+		secrets:      map[string]string{fieldReference: "new-password"},
+		fileErr:      fileErr,
+		resolveCalls: map[string]int{},
+	}, tmpDir)
+
+	result, err := processor.Process(&config.Config{Secrets: []config.Secret{
+		{Path: "password", Reference: fieldReference},
+		{Path: "private-key", Reference: fileReference, Kind: config.SecretKindFile},
+	}})
+	if err == nil {
+		t.Fatal("Expected file resolution error")
+	}
+	if result != nil {
+		t.Fatalf("Expected no result, got %#v", result)
+	}
+	if got := errors.ExitCode(err); got != errors.ExitCodeMissingReference {
+		t.Fatalf("Expected exit code %d, got %d", errors.ExitCodeMissingReference, got)
+	}
+	content, readErr := os.ReadFile(existingPath)
+	if readErr != nil {
+		t.Fatalf("Failed to read existing secret: %v", readErr)
+	}
+	if string(content) != "existing-password" {
+		t.Fatalf("Field was updated before file resolution completed: %q", content)
+	}
+}
+
+func TestProcessorResolutionFailureDoesNotCreateOutputDirectory(t *testing.T) {
+	const reference = "op://vault/item/missing.bin"
+	outputDir := filepath.Join(t.TempDir(), "secrets")
+	processor := NewProcessor(&mockClient{fileErr: &errors.ProviderResolutionError{Failures: []*errors.ProviderError{{
+		Kind: errors.ProviderErrorMissingReference, Reference: reference, Issue: "file not found",
+	}}}}, outputDir)
+
+	_, err := processor.Process(&config.Config{Secrets: []config.Secret{{
+		Path: "missing.bin", Reference: reference, Kind: config.SecretKindFile,
+	}}})
+	if err == nil {
+		t.Fatal("Expected resolution failure")
+	}
+	if _, statErr := os.Stat(outputDir); !os.IsNotExist(statErr) {
+		t.Fatalf("Expected output directory to remain absent, got %v", statErr)
+	}
+}
+
 func TestProcessorResolvesDuplicateReferencesOnce(t *testing.T) {
 	mock := &mockClient{
 		secrets: map[string]string{
@@ -173,6 +277,37 @@ func TestProcessorResolvesDuplicateReferencesOnce(t *testing.T) {
 
 	if got := mock.resolveCalls["op://vault/shared/field"]; got != 1 {
 		t.Fatalf("Expected duplicate reference to be resolved once, got %d", got)
+	}
+}
+
+func TestProcessorResolvesDuplicateFileReferenceOnce(t *testing.T) {
+	const reference = "op://vault/item/archive.bin"
+	want := []byte{0x00, 0xff, 0x01}
+	mock := &mockClient{files: map[string][]byte{reference: want}}
+	tmpDir := t.TempDir()
+	processor := NewProcessor(mock, tmpDir)
+
+	result, err := processor.Process(&config.Config{Secrets: []config.Secret{
+		{Path: "first.bin", Reference: reference, Kind: config.SecretKindFile},
+		{Path: "second.bin", Reference: reference, Kind: config.SecretKindFile},
+	}})
+	if err != nil {
+		t.Fatalf("Failed to process duplicate file reference: %v", err)
+	}
+	if result.ProcessedCount != 2 {
+		t.Fatalf("Expected 2 processed files, got %d", result.ProcessedCount)
+	}
+	if mock.fileCalls != 1 {
+		t.Fatalf("Expected one batched file resolution, got %d", mock.fileCalls)
+	}
+	for _, name := range []string{"first.bin", "second.bin"} {
+		got, readErr := os.ReadFile(filepath.Join(tmpDir, name))
+		if readErr != nil {
+			t.Fatalf("Failed to read %s: %v", name, readErr)
+		}
+		if string(got) != string(want) {
+			t.Fatalf("File %s changed bytes: got %v, want %v", name, got, want)
+		}
 	}
 }
 

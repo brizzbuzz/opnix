@@ -15,8 +15,8 @@ import (
 )
 
 type SecretClient interface {
-	ResolveSecret(reference string) (string, error)
 	ResolveSecrets(references []string) (map[string]string, error)
+	ResolveFiles(references []string) (map[string][]byte, error)
 }
 
 type ProcessResult struct {
@@ -56,6 +56,28 @@ func (p *Processor) Process(cfg *config.Config) (*ProcessResult, error) {
 		p.defaults = cfg.Defaults
 	}
 
+	result := &ProcessResult{
+		SecretPaths:    make(map[string]string),
+		ProcessedCount: 0,
+	}
+
+	fieldReferences, fileReferences := uniqueReferencesByKind(cfg.Secrets)
+	resolvedSecrets := make(map[string]string, len(fieldReferences))
+	if len(fieldReferences) > 0 {
+		var err error
+		resolvedSecrets, err = p.client.ResolveSecrets(fieldReferences)
+		if err != nil {
+			return nil, wrapResolutionError(err)
+		}
+	}
+	resolvedFiles := make(map[string][]byte, len(fileReferences))
+	if len(fileReferences) > 0 {
+		var err error
+		resolvedFiles, err = p.client.ResolveFiles(fileReferences)
+		if err != nil {
+			return nil, wrapResolutionError(err)
+		}
+	}
 	if err := os.MkdirAll(p.outputDir, 0755); err != nil {
 		return nil, errors.FileOperationError(
 			"Creating output directory",
@@ -65,41 +87,17 @@ func (p *Processor) Process(cfg *config.Config) (*ProcessResult, error) {
 		)
 	}
 
-	result := &ProcessResult{
-		SecretPaths:    make(map[string]string),
-		ProcessedCount: 0,
-	}
-
-	references := uniqueReferences(cfg.Secrets)
-	resolvedSecrets, err := p.client.ResolveSecrets(references)
-	if err != nil {
-		suggestions := []string{
-			"Check the failed 1Password references listed above",
-			"Create any missing vaults, items, or fields before restarting opnix-secrets.service",
-			"If rate-limited, wait for the 1Password reset window before retrying",
-		}
-		var resolutionErr *errors.ProviderResolutionError
-		if stderrors.As(err, &resolutionErr) {
-			for _, failure := range resolutionErr.Failures {
-				if failure.Kind == errors.ProviderErrorMissingReference {
-					suggestions = append(suggestions,
-						"If this service belongs to an older NixOS generation, restore any retired 1Password references until its rollback window closes",
-					)
-					break
-				}
-			}
-		}
-		return nil, errors.WrapWithSuggestions(
-			err,
-			"Resolving 1Password references",
-			"secret processing",
-			suggestions,
-		)
-	}
-
 	for i, secret := range cfg.Secrets {
 		secretName := fmt.Sprintf("secret[%d]:%s", i, secret.Path)
-		value, ok := resolvedSecrets[secret.Reference]
+		var value []byte
+		var ok bool
+		if secret.Kind == config.SecretKindFile {
+			value, ok = resolvedFiles[secret.Reference]
+		} else {
+			var fieldValue string
+			fieldValue, ok = resolvedSecrets[secret.Reference]
+			value = []byte(fieldValue)
+		}
 		if !ok {
 			return nil, errors.OnePasswordError(
 				fmt.Sprintf("Resolving secret %s", secretName),
@@ -129,7 +127,7 @@ func (p *Processor) Process(cfg *config.Config) (*ProcessResult, error) {
 	return result, nil
 }
 
-func (p *Processor) processSecret(secret config.Secret, secretName, value string) (string, error) {
+func (p *Processor) processSecret(secret config.Secret, secretName string, value []byte) (string, error) {
 	// Determine output path with enhanced path management
 	outputPath, err := p.resolveSecretPathWithTemplate(secret, secretName)
 	if err != nil {
@@ -168,7 +166,7 @@ func (p *Processor) processSecret(secret config.Secret, secretName, value string
 	}
 
 	// Write file with specified permissions
-	if err := os.WriteFile(outputPath, []byte(value), os.FileMode(fileMode)); err != nil {
+	if err := os.WriteFile(outputPath, value, os.FileMode(fileMode)); err != nil {
 		return "", errors.FileOperationError(
 			fmt.Sprintf("Writing secret file for %s", secretName),
 			outputPath,
@@ -202,17 +200,51 @@ func (p *Processor) processSecret(secret config.Secret, secretName, value string
 	return outputPath, nil
 }
 
-func uniqueReferences(secrets []config.Secret) []string {
-	seen := make(map[string]struct{}, len(secrets))
-	var references []string
+func uniqueReferencesByKind(secrets []config.Secret) ([]string, []string) {
+	seenFields := make(map[string]struct{}, len(secrets))
+	seenFiles := make(map[string]struct{}, len(secrets))
+	var fields, files []string
 	for _, secret := range secrets {
-		if _, ok := seen[secret.Reference]; ok {
+		if secret.Kind == config.SecretKindFile {
+			if _, ok := seenFiles[secret.Reference]; ok {
+				continue
+			}
+			seenFiles[secret.Reference] = struct{}{}
+			files = append(files, secret.Reference)
 			continue
 		}
-		seen[secret.Reference] = struct{}{}
-		references = append(references, secret.Reference)
+		if _, ok := seenFields[secret.Reference]; ok {
+			continue
+		}
+		seenFields[secret.Reference] = struct{}{}
+		fields = append(fields, secret.Reference)
 	}
-	return references
+	return fields, files
+}
+
+func wrapResolutionError(err error) error {
+	suggestions := []string{
+		"Check the failed 1Password references listed above",
+		"Create any missing vaults, items, fields, or files before restarting opnix-secrets.service",
+		"If rate-limited, wait for the 1Password reset window before retrying",
+	}
+	var resolutionErr *errors.ProviderResolutionError
+	if stderrors.As(err, &resolutionErr) {
+		for _, failure := range resolutionErr.Failures {
+			if failure.Kind == errors.ProviderErrorMissingReference {
+				suggestions = append(suggestions,
+					"If this service belongs to an older NixOS generation, restore any retired 1Password references until its rollback window closes",
+				)
+				break
+			}
+		}
+	}
+	return errors.WrapWithSuggestions(
+		err,
+		"Resolving 1Password references",
+		"secret processing",
+		suggestions,
+	)
 }
 
 // setOwnership sets the file ownership based on owner and group names
