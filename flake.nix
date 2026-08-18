@@ -23,7 +23,7 @@
 
       buildOpnix = pkgs.buildGoModule {
         pname = "opnix";
-        version = "0.10.1";
+        version = "0.11.0";
         inherit src;
         inherit vendorHash;
         subPackages = ["cmd/opnix"];

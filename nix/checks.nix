@@ -9,7 +9,7 @@
   # Run tests
   go-tests = pkgs.buildGoModule {
     pname = "opnix-go-tests";
-    version = "0.10.1";
+    version = "0.11.0";
     inherit src;
     inherit vendorHash;
 
@@ -23,7 +23,7 @@
   # Run golangci-lint
   go-lint = pkgs.buildGoModule {
     pname = "opnix-go-lint";
-    version = "0.10.1";
+    version = "0.11.0";
     inherit src;
     inherit vendorHash;
 

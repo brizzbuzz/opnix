@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0] - 2026-08-18
+
+### 🚀 Features
+
+- *(nixos)* Add automatic secret polling (#52)
+- Install opnix CLI via NixOS module systemPackages (#46)
+- *(secrets)* Support binary 1Password files (#53)
+
+### 🐛 Bug Fixes
+
+- *(secrets)* Reconcile declared file modes (#49)
+- *(secrets)* Guide rollback-safe reference migrations (#50)
+
+### 📚 Documentation
+
+- *(systemd)* Explain rate-limit restart policy (#51)
+- Clarify runtime secret path usage (#54)
+
 ## [0.10.1] - 2026-05-19
 
 ### 🐛 Bug Fixes
