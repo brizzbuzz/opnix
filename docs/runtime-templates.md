@@ -2,7 +2,49 @@
 
 Runtime templates combine named 1Password field secrets with literal text in an output file. OpNix resolves secrets when it runs, not during Nix evaluation. Template content and marker text can be stored in the world-readable Nix store, so never put credentials directly in `content`.
 
-## Home Manager example
+## Plain text with several secrets
+
+Each named secret has its own placeholder. This Home Manager example writes both values into `~/.config/myapp/credentials.txt`, alongside ordinary text:
+
+```nix
+{ config, ... }: {
+  programs.onepassword-secrets = {
+    enable = true;
+    secrets = {
+      databasePassword.reference = "op://Example/Database/password";
+      apiToken.reference = "op://Example/Service/token";
+    };
+    templates.credentials = {
+      path = ".config/myapp/credentials.txt";
+      content = ''
+        Application credentials
+        Database password: ${config.programs.onepassword-secrets.placeholder.databasePassword}
+        API token: ${config.programs.onepassword-secrets.placeholder.apiToken}
+      '';
+    };
+  };
+}
+```
+
+Store the actual password and token in those 1Password fields. No base64 encoding is needed for this plain-text example. Each placeholder is replaced with its field's exact value at runtime. A placeholder can appear more than once, and newlines in a value are preserved.
+
+## Environment-style file
+
+Using the same secret definitions, add this template inside `programs.onepassword-secrets` for an application that reads `KEY=value` files:
+
+```nix
+templates.appEnv = {
+  path = ".config/myapp/app.env";
+  content = ''
+    DATABASE_PASSWORD=${config.programs.onepassword-secrets.placeholder.databasePassword}
+    API_TOKEN=${config.programs.onepassword-secrets.placeholder.apiToken}
+  '';
+};
+```
+
+This assumes single-line values accepted literally by the application's parser. OpNix does not quote or escape them. Do not source the file as shell code unless the values are safe for shell syntax.
+
+## Docker JSON
 
 ```nix
 { config, ... }: {
