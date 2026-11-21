@@ -322,6 +322,77 @@ in {
       description = "Systemd service integration configuration";
     };
 
+    templates = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule {
+        options = {
+          path = lib.mkOption {
+            type = lib.types.str;
+            description = "Output path for the rendered template";
+          };
+          content = lib.mkOption {
+            type = lib.types.str;
+            description = "Literal template content containing OpNix placeholders";
+          };
+          owner = lib.mkOption {
+            type = lib.types.str;
+            default = "root";
+          };
+          group = lib.mkOption {
+            type = lib.types.str;
+            default = "root";
+          };
+          mode = lib.mkOption {
+            type = lib.types.str;
+            default = "0600";
+          };
+
+          services = lib.mkOption {
+            type =
+              lib.types.either
+              (lib.types.listOf lib.types.str)
+              (lib.types.attrsOf (lib.types.submodule {
+                options = {
+                  restart = lib.mkOption {
+                    type = lib.types.bool;
+                    default = true;
+                    description = "Whether to restart the service when this secret changes";
+                  };
+
+                  signal = lib.mkOption {
+                    type = lib.types.nullOr lib.types.str;
+                    default = null;
+                    description = "Custom signal to send instead of restart (e.g., SIGHUP for reload)";
+                    example = "SIGHUP";
+                  };
+
+                  after = lib.mkOption {
+                    type = lib.types.listOf lib.types.str;
+                    default = ["opnix-secrets.service"];
+                    description = "Additional systemd dependencies for this service";
+                  };
+                };
+              }));
+            default = [];
+            description = "Services to manage when this template changes";
+          };
+        };
+      });
+      default = {};
+      description = "Named templates rendered with declarative field secrets at runtime";
+    };
+
+    placeholder = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      readOnly = true;
+      description = "Runtime placeholders for named field secrets";
+    };
+
+    templatePaths = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      readOnly = true;
+      description = "Resolved output paths for declarative templates";
+    };
+
     secretPaths = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = {};
@@ -334,6 +405,21 @@ in {
   };
 
   config = lib.mkMerge [
+    {
+      services.onepassword-secrets.placeholder =
+        if cfg.enable
+        then lib.mapAttrs (name: _: "<OPNIX:${builtins.hashString "sha256" name}>") (lib.filterAttrs (_: secret: secret.kind == "field") (validateSecretKeys cfg.secrets))
+        else {};
+      services.onepassword-secrets.templatePaths =
+        if cfg.enable
+        then
+          lib.mapAttrs (name: template:
+            if lib.hasPrefix "/" template.path
+            then template.path
+            else "${cfg.outputDir}/${template.path}")
+          cfg.templates
+        else {};
+    }
     # Always define secretPaths to prevent evaluation errors (fixes MMI-88, MMI-92)
     (lib.mkIf (cfg.enable && cfg.secrets != {}) {
       services.onepassword-secrets.secretPaths =
@@ -362,6 +448,7 @@ in {
           pkgs.writeText "opnix-declarative-secrets.json" (builtins.toJSON {
             secrets =
               lib.mapAttrsToList (name: secret: {
+                inherit name;
                 path =
                   if secret.path != null
                   then secret.path
@@ -376,6 +463,14 @@ in {
                 services = secret.services;
               })
               (validateSecretKeys cfg.secrets);
+            templates =
+              lib.mapAttrsToList (name: template: {
+                inherit name;
+                path = cfg.templatePaths.${name};
+                inherit (template) content owner group mode;
+                inherit (template) services;
+              })
+              cfg.templates;
             pathTemplate = cfg.pathTemplate;
             defaults = cfg.defaults;
             systemdIntegration = cfg.systemdIntegration;
@@ -480,6 +575,10 @@ in {
                 assertion = configCount > 0;
                 message = "OpNix: At least one of configFiles or secrets must be specified";
               }
+              {
+                assertion = cfg.templates == {} || hasDeclarativeSecrets;
+                message = "OpNix: templates require declarative secrets; configFiles have separate placeholder scopes";
+              }
             ]
             ++ (lib.flatten (lib.mapAttrsToList (name: secret: [
                 {
@@ -487,7 +586,12 @@ in {
                   message = "OpNix secret '${name}': mode '${secret.mode}' is not a valid octal permission (e.g., 0644, 0600)";
                 }
               ])
-              cfg.secrets));
+              cfg.secrets))
+            ++ (lib.mapAttrsToList (name: template: {
+                assertion = builtins.match "^(0[0-7]{3}|[0-7]{3})$" template.mode != null;
+                message = "OpNix template mode is not an ordinary octal permission: ${name}: ${template.mode}";
+              })
+              cfg.templates);
         }
 
         # Main configuration
@@ -546,7 +650,14 @@ in {
               cfg.secrets);
 
             # Combine with global services list
-            allServices = lib.unique (cfg.systemdIntegration.services ++ servicesFromSecrets);
+            servicesFromTemplates = lib.flatten (lib.mapAttrsToList (
+                _: template:
+                  if lib.isList template.services
+                  then template.services
+                  else lib.attrNames template.services
+              )
+              cfg.templates);
+            allServices = lib.unique (cfg.systemdIntegration.services ++ servicesFromSecrets ++ servicesFromTemplates);
 
             # Generate service configurations
             serviceConfigs = lib.listToAttrs (map (serviceName: {

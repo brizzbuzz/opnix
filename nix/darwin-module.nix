@@ -170,6 +170,53 @@ in {
       };
     };
 
+    templates = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule {
+        options = {
+          path = lib.mkOption {
+            type = lib.types.str;
+            description = "Output path for the rendered template";
+          };
+          content = lib.mkOption {
+            type = lib.types.str;
+            description = "Literal template content containing OpNix placeholders";
+          };
+          owner = lib.mkOption {
+            type = lib.types.str;
+            default = "root";
+          };
+          group = lib.mkOption {
+            type = lib.types.str;
+            default = "root";
+          };
+          mode = lib.mkOption {
+            type = lib.types.str;
+            default = "0600";
+          };
+
+          services = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [];
+            description = "Services to manage when this template changes";
+          };
+        };
+      });
+      default = {};
+      description = "Named templates rendered with declarative field secrets at runtime";
+    };
+
+    placeholder = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      readOnly = true;
+      description = "Runtime placeholders for named field secrets";
+    };
+
+    templatePaths = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      readOnly = true;
+      description = "Resolved output paths for declarative templates";
+    };
+
     secretPaths = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = {};
@@ -182,6 +229,21 @@ in {
   };
 
   config = lib.mkMerge [
+    {
+      services.onepassword-secrets.placeholder =
+        if cfg.enable
+        then lib.mapAttrs (name: _: "<OPNIX:${builtins.hashString "sha256" name}>") (lib.filterAttrs (_: secret: secret.kind == "field") (validateSecretKeys cfg.secrets))
+        else {};
+      services.onepassword-secrets.templatePaths =
+        if cfg.enable
+        then
+          lib.mapAttrs (name: template:
+            if lib.hasPrefix "/" template.path
+            then template.path
+            else "${cfg.outputDir}/${template.path}")
+          cfg.templates
+        else {};
+    }
     # Always define secretPaths to prevent evaluation errors (fixes MMI-87)
     {
       services.onepassword-secrets.secretPaths =
@@ -213,6 +275,7 @@ in {
           pkgs.writeText "opnix-declarative-secrets.json" (builtins.toJSON {
             secrets =
               lib.mapAttrsToList (name: secret: {
+                inherit name;
                 path =
                   if secret.path != null
                   then secret.path
@@ -226,6 +289,14 @@ in {
                 variables = secret.variables;
               })
               (validateSecretKeys cfg.secrets);
+            templates =
+              lib.mapAttrsToList (name: template: {
+                inherit name;
+                path = cfg.templatePaths.${name};
+                inherit (template) content owner group mode;
+                inherit (template) services;
+              })
+              cfg.templates;
           })
         else null;
 
@@ -242,6 +313,10 @@ in {
             assertion = configCount > 0;
             message = "OpNix: At least one of configFiles or secrets must be specified";
           }
+          {
+            assertion = cfg.templates == {} || hasDeclarativeSecrets;
+            message = "OpNix: templates require declarative secrets; configFiles have separate placeholder scopes";
+          }
         ]
         ++ (lib.flatten (lib.mapAttrsToList (name: secret: [
             {
@@ -249,7 +324,12 @@ in {
               message = "OpNix secret '${name}': mode '${secret.mode}' is not a valid octal permission (e.g., 0644, 0600)";
             }
           ])
-          cfg.secrets));
+          cfg.secrets))
+        ++ (lib.mapAttrsToList (name: template: {
+            assertion = builtins.match "^(0[0-7]{3}|[0-7]{3})$" template.mode != null;
+            message = "OpNix template mode is not an ordinary octal permission: ${name}: ${template.mode}";
+          })
+          cfg.templates);
 
       # Main configuration
       # Let nix-darwin know it's allowed to mess with this group

@@ -25,6 +25,27 @@ type ServiceAction struct {
 	After   []string
 }
 
+// Output identifies a processed file and the services associated with it.
+type Output struct {
+	Name     string
+	Path     string
+	Services interface{}
+}
+
+// SecretOutputs converts the legacy secret configuration and path map to outputs.
+func SecretOutputs(secrets []config.Secret, paths map[string]string) []Output {
+	outputs := make([]Output, 0, len(secrets))
+	for i, secret := range secrets {
+		name := fmt.Sprintf("secret[%d]:%s", i, secret.Path)
+		path := paths[name]
+		if path == "" && filepath.IsAbs(secret.Path) {
+			path = secret.Path
+		}
+		outputs = append(outputs, Output{Name: name, Path: path, Services: secret.Services})
+	}
+	return outputs
+}
+
 type serviceStatus struct {
 	ActiveState string
 	SubState    string
@@ -291,6 +312,11 @@ func (m *Manager) ExtractServiceActions(secret config.Secret, secretName string)
 
 // ProcessSecretChanges processes secrets and determines which services need restart
 func (m *Manager) ProcessSecretChanges(secrets []config.Secret, secretPaths map[string]string) error {
+	return m.ProcessOutputChanges(SecretOutputs(secrets, secretPaths))
+}
+
+// ProcessOutputChanges processes secret and template outputs together.
+func (m *Manager) ProcessOutputChanges(outputs []Output) error {
 	if !m.config.Enable {
 		return nil
 	}
@@ -300,10 +326,10 @@ func (m *Manager) ProcessSecretChanges(secrets []config.Secret, secretPaths map[
 	var configuredServiceActions []ServiceAction
 
 	// Check each secret for changes
-	for i, secret := range secrets {
-		secretName := fmt.Sprintf("secret[%d]:%s", i, secret.Path)
+	for _, output := range outputs {
+		secretName := output.Name
 
-		actions, err := m.ExtractServiceActions(secret, secretName)
+		actions, err := m.ExtractServiceActions(config.Secret{Services: output.Services}, secretName)
 		if err != nil {
 			if m.config.ErrorHandling.ContinueOnError {
 				fmt.Fprintf(os.Stderr, "WARNING: Failed to extract service actions for %s: %v\n", secretName, err)
@@ -314,19 +340,9 @@ func (m *Manager) ProcessSecretChanges(secrets []config.Secret, secretPaths map[
 		configuredServiceActions = append(configuredServiceActions, actions...)
 
 		// Get the actual file path for this secret
-		var secretPath string
-		if secret.Path != "" {
-			if filepath.IsAbs(secret.Path) {
-				secretPath = secret.Path
-			} else {
-				// This would need to be calculated based on the path resolution logic
-				// For now, assume it's provided in secretPaths
-				if path, exists := secretPaths[secretName]; exists {
-					secretPath = path
-				} else {
-					continue // Skip if we can't determine the path
-				}
-			}
+		secretPath := output.Path
+		if secretPath == "" {
+			continue
 		}
 
 		// Check if change detection is enabled

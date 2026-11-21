@@ -22,6 +22,13 @@ type SecretClient interface {
 type ProcessResult struct {
 	SecretPaths    map[string]string // Maps secret names to their file paths
 	ProcessedCount int
+	Templates      []TemplateResult
+}
+
+type TemplateResult struct {
+	Name     string
+	Path     string
+	Services interface{}
 }
 
 type Processor struct {
@@ -48,12 +55,22 @@ func NewProcessorWithConfig(client SecretClient, outputDir, pathTemplate string,
 }
 
 func (p *Processor) Process(cfg *config.Config) (*ProcessResult, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration is nil")
+	}
 	// Update processor with config-level settings
 	if cfg.PathTemplate != "" {
 		p.pathTemplate = cfg.PathTemplate
 	}
 	if len(cfg.Defaults) > 0 {
 		p.defaults = cfg.Defaults
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	prepared, err := p.prepare(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	result := &ProcessResult{
@@ -67,6 +84,9 @@ func (p *Processor) Process(cfg *config.Config) (*ProcessResult, error) {
 		var err error
 		resolvedSecrets, err = p.client.ResolveSecrets(fieldReferences)
 		if err != nil {
+			if len(cfg.Templates) > 0 {
+				return nil, fmt.Errorf("failed to resolve template sources")
+			}
 			return nil, wrapResolutionError(err)
 		}
 	}
@@ -75,8 +95,34 @@ func (p *Processor) Process(cfg *config.Config) (*ProcessResult, error) {
 		var err error
 		resolvedFiles, err = p.client.ResolveFiles(fileReferences)
 		if err != nil {
+			if len(cfg.Templates) > 0 {
+				return nil, fmt.Errorf("failed to resolve secret sources")
+			}
 			return nil, wrapResolutionError(err)
 		}
+	}
+	values := make(map[string]string)
+	for _, secret := range cfg.Secrets {
+		if secret.Kind == config.SecretKindFile {
+			if _, ok := resolvedFiles[secret.Reference]; !ok {
+				return nil, fmt.Errorf("missing resolved file source")
+			}
+		} else {
+			value, ok := resolvedSecrets[secret.Reference]
+			if !ok {
+				return nil, fmt.Errorf("missing resolved field source")
+			}
+			if secret.Name != "" {
+				values[secret.Name] = value
+			}
+		}
+	}
+	for i, template := range cfg.Templates {
+		content, err := config.RenderTemplate(template.Content, values)
+		if err != nil {
+			return nil, fmt.Errorf("rendering template %q: %w", template.Name, err)
+		}
+		prepared[i].content = []byte(content)
 	}
 	if err := os.MkdirAll(p.outputDir, 0755); err != nil {
 		return nil, errors.FileOperationError(
@@ -122,6 +168,12 @@ func (p *Processor) Process(cfg *config.Config) (*ProcessResult, error) {
 
 		result.SecretPaths[secretName] = outputPath
 		result.ProcessedCount++
+	}
+	for i, template := range cfg.Templates {
+		if err := writeTemplate(prepared[i]); err != nil {
+			return nil, fmt.Errorf("writing template %q: %w", template.Name, err)
+		}
+		result.Templates = append(result.Templates, TemplateResult{Name: template.Name, Path: prepared[i].path, Services: template.Services})
 	}
 
 	return result, nil

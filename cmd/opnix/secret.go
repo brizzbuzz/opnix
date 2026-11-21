@@ -21,7 +21,7 @@ type secretProcessor interface {
 }
 
 type systemdManager interface {
-	ProcessSecretChanges([]config.Secret, map[string]string) error
+	ProcessOutputChanges([]systemd.Output) error
 }
 
 type secretCommand struct {
@@ -85,7 +85,7 @@ func (s *secretCommand) Run() error {
 		return err
 	}
 
-	log.Printf("Loaded configuration with %d secrets", len(cfg.Secrets))
+	log.Printf("Loaded configuration with %d secrets and %d templates", len(cfg.Secrets), len(cfg.Templates))
 
 	// Initialize 1Password client with validation
 	client, err := s.newClient(s.tokenFile)
@@ -104,7 +104,7 @@ func (s *secretCommand) Run() error {
 		return err
 	}
 
-	log.Printf("Successfully processed %d secrets to %s", result.ProcessedCount, s.outputDir)
+	log.Printf("Successfully processed %d secrets and %d templates to %s", result.ProcessedCount, len(result.Templates), s.outputDir)
 
 	// Process systemd integration if enabled
 	if cfg.SystemdIntegration.Enable {
@@ -124,7 +124,11 @@ func (s *secretCommand) Run() error {
 			)
 		}
 
-		if err := systemdManager.ProcessSecretChanges(cfg.Secrets, result.SecretPaths); err != nil {
+		outputs := systemd.SecretOutputs(cfg.Secrets, result.SecretPaths)
+		for _, template := range result.Templates {
+			outputs = append(outputs, systemd.Output{Name: "template:" + template.Name, Path: template.Path, Services: template.Services})
+		}
+		if err := systemdManager.ProcessOutputChanges(outputs); err != nil {
 			return errors.WrapWithSuggestions(
 				err,
 				"Processing systemd service changes",
@@ -156,11 +160,6 @@ func (s *secretCommand) validatePrerequisites() error {
 		)
 	}
 
-	// Check if output directory is writable
-	if err := s.checkOutputDirectory(); err != nil {
-		return err
-	}
-
 	// Validate token file (but don't fail if missing - let graceful handling work)
 	validator := validation.NewValidator()
 	if err := validator.ValidateTokenFile(s.tokenFile); err != nil {
@@ -168,35 +167,6 @@ func (s *secretCommand) validatePrerequisites() error {
 		fmt.Fprintf(os.Stderr, "WARNING: %v\n", err)
 		fmt.Fprintf(os.Stderr, "INFO: Continuing with existing secrets if available\n")
 	}
-
-	return nil
-}
-
-// checkOutputDirectory ensures the output directory is accessible
-func (s *secretCommand) checkOutputDirectory() error {
-	// Try to create the directory if it doesn't exist
-	if err := os.MkdirAll(s.outputDir, 0755); err != nil {
-		return errors.FileOperationError(
-			"Creating output directory",
-			s.outputDir,
-			"Cannot create or access output directory",
-			err,
-		)
-	}
-
-	// Test write permissions by creating a temporary file
-	testFile := fmt.Sprintf("%s/.opnix-test", s.outputDir)
-	if err := os.WriteFile(testFile, []byte("test"), 0600); err != nil {
-		return errors.FileOperationError(
-			"Testing output directory permissions",
-			s.outputDir,
-			"Output directory is not writable",
-			err,
-		)
-	}
-
-	// Clean up test file
-	_ = os.Remove(testFile) // Ignore error - cleanup is best effort
 
 	return nil
 }
