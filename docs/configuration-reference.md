@@ -150,7 +150,7 @@ Each secret in the `secrets` attribute set supports these options:
 - **Type**: `enum ["field" "file"]`
 - **Default**: `"field"`
 - **Description**: Resolve a text field or download a Document/attachment as raw bytes
-- **Notes**: File references use exactly `op://Vault/Item/filename`; see [Binary Documents and Attachments](#binary-documents-and-attachments)
+- **Notes**: File references use `op://Vault/Item/filename` or `op://Vault/Item/Section/filename`; see [Binary Documents and Attachments](#binary-documents-and-attachments)
 
 #### `path`
 - **Type**: `nullOr str`
@@ -516,18 +516,19 @@ op://VaultName/ItemName/FieldName
 ### Binary Documents and Attachments
 
 Set `kind = "file"` to retrieve bytes through the 1Password SDK file API. This
-supports both Document-category items and files attached to ordinary items. The
-reference must have exactly three components:
+supports both Document-category items and files attached to ordinary items:
 
 ```text
 op://Vault/Item/filename
+op://Vault/Item/Section/filename
 ```
 
-Vault and item selectors match an exact title or ID. The filename matches the
-Document name or attachment name exactly. Missing and ambiguous selectors fail
-with exit status `65`; OpNix never falls back from field resolution to file
-resolution automatically. Percent-encode special characters within individual
-components.
+Vault, item, and section selectors match an exact title or ID. Without a section,
+the filename matches a Document or attachment name exactly. With a section, it
+matches only attachment names in that section, never the Document. Missing or
+ambiguous selectors and duplicate matching filenames fail with exit status `65`.
+OpNix never falls back from field resolution to file resolution automatically.
+Percent-encode special characters within individual components.
 
 All field and file references are resolved before any secret file is written,
 so a failed download leaves existing files unchanged. File contents remain raw
