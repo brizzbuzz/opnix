@@ -236,3 +236,70 @@ func TestWriteTemplateReplacementAndCleanup(t *testing.T) {
 		t.Fatalf("temporary files: %v %v", entries, err)
 	}
 }
+
+func TestWriteTemplateUnreadableDestination(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		initial    os.FileMode
+		final      os.FileMode
+		newContent string
+	}{
+		{"mode 0000", 0000, 0000, "new"},
+		{"mode 0200", 0200, 0200, "new"},
+		{"repair mode", 0000, 0600, "old"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "app")
+			initial := preparedTemplate{path: path, content: []byte("old"), mode: tc.initial, uid: -1, gid: -1}
+			if err := writeTemplate(initial); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.ReadFile(path); err == nil {
+				t.Skip("filesystem permits reading the output despite its mode")
+			} else if !os.IsPermission(err) {
+				t.Fatal(err)
+			}
+			initial.content = []byte(tc.newContent)
+			initial.mode = tc.final
+			if err := writeTemplate(initial); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(path)
+			if err != nil || info.Mode().Perm() != tc.final {
+				t.Fatalf("output mode: %v, error: %v", info, err)
+			}
+			if err := os.Chmod(path, 0600); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil || string(data) != tc.newContent {
+				t.Fatalf("output: %q, error: %v", data, err)
+			}
+		})
+	}
+}
+
+func TestWriteTemplateUnreadableDestinationReplacementFailure(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("ownership failure requires an unprivileged user")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "app")
+	if err := writeTemplate(preparedTemplate{path: path, content: []byte("old"), mode: 0000, uid: -1, gid: -1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeTemplate(preparedTemplate{path: path, content: []byte("new"), mode: 0600, uid: 0, gid: -1}); err == nil {
+		t.Fatal("expected chown failure")
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "old" {
+		t.Fatalf("destination changed: %q %v", data, err)
+	}
+	entries, err := filepath.Glob(filepath.Join(dir, ".opnix-template-*"))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("temporary files: %v %v", entries, err)
+	}
+}

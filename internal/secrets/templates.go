@@ -195,10 +195,10 @@ func writeTemplate(t preparedTemplate) error {
 	info, err := os.Lstat(t.path)
 	if err == nil {
 		old, err := os.ReadFile(t.path)
-		if err != nil {
+		if err != nil && !os.IsPermission(err) {
 			return err
 		}
-		if bytes.Equal(old, t.content) {
+		if err == nil && bytes.Equal(old, t.content) {
 			stat, ok := info.Sys().(*syscall.Stat_t)
 			if !ok {
 				return fmt.Errorf("cannot inspect output ownership")
