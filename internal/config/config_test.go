@@ -81,13 +81,27 @@ func TestLoadSecretKind(t *testing.T) {
 }
 
 func TestLoadFileKindRequiresFilenameReference(t *testing.T) {
-	configPath := filepath.Join(t.TempDir(), "config.json")
-	configData := `{"secrets":[{"path":"test/file","reference":"op://vault/item/section/file.bin","kind":"file"}]}`
-	if err := os.WriteFile(configPath, []byte(configData), 0600); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-	if _, err := Load(configPath); err == nil {
-		t.Fatal("Expected file reference with more than three components to fail validation")
+	for _, tt := range []struct {
+		reference string
+		valid     bool
+	}{
+		{"op://vault/item/file.bin", true},
+		{"op://vault/item/section/file.bin", true},
+		{"op://vault/item//file.bin", false},
+		{"op://vault/item/%XX/file.bin", false},
+		{"op://vault/item/section/nested/file.bin", false},
+	} {
+		t.Run(tt.reference, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.json")
+			configData := `{"secrets":[{"path":"test/file","reference":"` + tt.reference + `","kind":"file"}]}`
+			if err := os.WriteFile(configPath, []byte(configData), 0600); err != nil {
+				t.Fatalf("Failed to write config: %v", err)
+			}
+			_, err := Load(configPath)
+			if (err == nil) != tt.valid {
+				t.Fatalf("valid = %v, error = %v", tt.valid, err)
+			}
+		})
 	}
 }
 

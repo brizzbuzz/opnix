@@ -42,6 +42,8 @@ Fields:
   - gpg-key: [GPG private key]
   - npmrc: [NPM configuration with tokens]
   - gitconfig-signing-key: [Git signing key ID]
+Section: Application Files
+  - config.yml: [attached configuration file]
 ```
 
 ## Configuration
@@ -91,6 +93,13 @@ Fields:
       npmConfig = {
         reference = "op://Personal/Development-Config/npmrc";
         path = ".npmrc";
+        mode = "0600";
+      };
+
+      appConfig = {
+        reference = "op://Personal/Development-Config/Application%20Files/config.yml";
+        kind = "file";
+        path = ".config/example/config.yml";
         mode = "0600";
       };
     };

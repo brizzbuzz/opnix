@@ -178,6 +178,28 @@ func TestValidator_ValidateReference(t *testing.T) {
 	}
 }
 
+func TestValidator_FileReferences(t *testing.T) {
+	tests := []struct {
+		reference string
+		valid     bool
+	}{
+		{"op://Vault/Item/config.yml", true},
+		{"op://Vault/Item/Production%20Keys/config.yml", true},
+		{"op://Vault/Item//config.yml", false},
+		{"op://Vault/Item/%ZZ/config.yml", false},
+		{"op://Vault/Item/Section/", false},
+		{"op://Vault/Item/Section/nested/config.yml", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.reference, func(t *testing.T) {
+			err := NewValidator().ValidateConfigStruct([]SecretData{{Path: "file", Reference: tt.reference, Kind: "file"}})
+			if (err == nil) != tt.valid {
+				t.Fatalf("valid = %v, error = %v", tt.valid, err)
+			}
+		})
+	}
+}
+
 func TestValidator_ValidatePath(t *testing.T) {
 	validator := NewValidator()
 

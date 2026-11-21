@@ -286,6 +286,20 @@ func TestResolveFilesReadsDocumentsAndAttachments(t *testing.T) {
 			}}},
 			wantAttr: onepassword.FileAttributes{ID: "attachment-id", Name: "client.p12", Size: 6},
 		},
+		{
+			name:      "attachment by section title",
+			reference: "op://Vault/Item/Production%20Keys/config.yml",
+			vault:     onepassword.VaultOverview{ID: "vault-id", Title: "Vault"},
+			overview:  onepassword.ItemOverview{ID: "item-id", Title: "Item"},
+			item: onepassword.Item{
+				Sections: []onepassword.ItemSection{{ID: "section-id", Title: "Production Keys"}, {ID: "other", Title: "Other"}},
+				Files: []onepassword.ItemFile{
+					{SectionID: "other", Attributes: onepassword.FileAttributes{ID: "other-file", Name: "config.yml"}},
+					{SectionID: "section-id", Attributes: onepassword.FileAttributes{ID: "selected", Name: "config.yml"}},
+				},
+			},
+			wantAttr: onepassword.FileAttributes{ID: "selected", Name: "config.yml"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -378,11 +392,69 @@ func TestResolveFilesClassifiesSelectorFailures(t *testing.T) {
 		client := &Client{vaults: fakeVaultsAPI{list: func(context.Context, ...onepassword.VaultListParams) ([]onepassword.VaultOverview, error) {
 			return nil, nil
 		}}}
-		_, err := client.ResolveFiles([]string{"op://Vault/Item/Section/file.bin"})
+		_, err := client.ResolveFiles([]string{"op://Vault/Item/Section/nested/file.bin"})
 		if err == nil || opnixerrors.ExitCode(err) != opnixerrors.ExitCodeMissingReference {
 			t.Fatalf("Expected invalid reference exit %d, got %v", opnixerrors.ExitCodeMissingReference, err)
 		}
 	})
+}
+
+func TestResolveFilesSectionSelection(t *testing.T) {
+	sections := []onepassword.ItemSection{{ID: "first", Title: "Production"}, {ID: "second", Title: "Development"}}
+	files := []onepassword.ItemFile{
+		{SectionID: "first", Attributes: onepassword.FileAttributes{ID: "file-one", Name: "config.yml"}},
+		{SectionID: "second", Attributes: onepassword.FileAttributes{ID: "file-two", Name: "config.yml"}},
+	}
+	tests := []struct {
+		name      string
+		reference string
+		item      onepassword.Item
+		wantID    string
+		wantKind  opnixerrors.ProviderErrorKind
+	}{
+		{"section ID", "op://Vault/Item/first/config.yml", onepassword.Item{Sections: sections, Files: files}, "file-one", ""},
+		{"other section title", "op://Vault/Item/Development/config.yml", onepassword.Item{Sections: sections, Files: files}, "file-two", ""},
+		{"missing section", "op://Vault/Item/Missing/config.yml", onepassword.Item{Sections: sections, Files: files}, "", opnixerrors.ProviderErrorMissingReference},
+		{"section without ID cannot match unsectioned file", "op://Vault/Item/Production/config.yml", onepassword.Item{Sections: []onepassword.ItemSection{{Title: "Production"}}, Files: []onepassword.ItemFile{{Attributes: onepassword.FileAttributes{ID: "unsectioned", Name: "config.yml"}}}}, "", opnixerrors.ProviderErrorMissingReference},
+		{"duplicate section title before filename", "op://Vault/Item/Production/config.yml", onepassword.Item{Sections: []onepassword.ItemSection{{ID: "first", Title: "Production"}, {ID: "second", Title: "Production"}}, Files: files[:1]}, "", opnixerrors.ProviderErrorAmbiguousReference},
+		{"section ID title collision", "op://Vault/Item/first/config.yml", onepassword.Item{Sections: []onepassword.ItemSection{{ID: "first", Title: "Production"}, {ID: "second", Title: "first"}}, Files: files[:1]}, "", opnixerrors.ProviderErrorAmbiguousReference},
+		{"missing file in section", "op://Vault/Item/Development/config.yml", onepassword.Item{Sections: sections, Files: files[:1]}, "", opnixerrors.ProviderErrorMissingReference},
+		{"duplicate filename in section", "op://Vault/Item/Production/config.yml", onepassword.Item{Sections: sections, Files: []onepassword.ItemFile{files[0], {SectionID: "first", Attributes: onepassword.FileAttributes{ID: "duplicate", Name: "config.yml"}}}}, "", opnixerrors.ProviderErrorAmbiguousReference},
+		{"no document fallback", "op://Vault/Item/Production/config.yml", onepassword.Item{Sections: sections, Document: &onepassword.FileAttributes{ID: "document", Name: "config.yml"}}, "", opnixerrors.ProviderErrorMissingReference},
+		{"unqualified ambiguous across sections", "op://Vault/Item/config.yml", onepassword.Item{Sections: sections, Files: files}, "", opnixerrors.ProviderErrorAmbiguousReference},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &Client{
+				vaults: fakeVaultsAPI{list: func(context.Context, ...onepassword.VaultListParams) ([]onepassword.VaultOverview, error) {
+					return []onepassword.VaultOverview{{ID: "vault", Title: "Vault"}}, nil
+				}},
+				items: fakeItemsAPI{
+					list: func(context.Context, string, ...onepassword.ItemListFilter) ([]onepassword.ItemOverview, error) {
+						return []onepassword.ItemOverview{{ID: "item", Title: "Item"}}, nil
+					},
+					get: func(context.Context, string, string) (onepassword.Item, error) { return tt.item, nil },
+				},
+				files: fakeFilesAPI{read: func(_ context.Context, _, _ string, attr onepassword.FileAttributes) ([]byte, error) {
+					if tt.wantKind != "" || attr.ID != tt.wantID {
+						t.Fatalf("unexpected file read: %s", attr.ID)
+					}
+					return []byte{0, 255, 128}, nil
+				}},
+			}
+			got, err := client.ResolveFiles([]string{tt.reference})
+			if tt.wantKind == "" {
+				if err != nil || string(got[tt.reference]) != string([]byte{0, 255, 128}) {
+					t.Fatalf("unexpected result %v, error %v", got, err)
+				}
+				return
+			}
+			var resolution *opnixerrors.ProviderResolutionError
+			if !stderrors.As(err, &resolution) || len(resolution.Failures) != 1 || resolution.Failures[0].Kind != tt.wantKind {
+				t.Fatalf("expected error kind %q, got %v", tt.wantKind, err)
+			}
+		})
+	}
 }
 
 func TestUnsupportedFileFormatSuggestsFileKind(t *testing.T) {

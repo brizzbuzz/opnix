@@ -127,12 +127,12 @@ func (v *Validator) validateKind(kind, secretName string) error {
 
 func (v *Validator) validateFileReference(reference, secretName string) error {
 	parts := strings.Split(strings.TrimPrefix(reference, "op://"), "/")
-	if len(parts) != 3 {
+	if len(parts) != 3 && len(parts) != 4 {
 		return errors.ConfigValidationError(
 			fmt.Sprintf("%s.reference", secretName),
 			reference,
-			"File references must have exactly 3 parts: vault/item/filename",
-			[]string{"Use format: op://Vault/Item/filename", "Remove section or field selectors from file references"},
+			"File references must have 3 or 4 parts: vault/item/[section/]filename",
+			[]string{"Use format: op://Vault/Item/filename or op://Vault/Item/Section/filename"},
 		)
 	}
 	for _, part := range parts {
@@ -142,7 +142,7 @@ func (v *Validator) validateFileReference(reference, secretName string) error {
 				fmt.Sprintf("%s.reference", secretName),
 				reference,
 				"File reference contains an invalid or empty component",
-				[]string{"Percent-encode special characters in vault, item, and filename components"},
+				[]string{"Percent-encode special characters in each component"},
 			)
 		}
 	}

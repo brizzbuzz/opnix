@@ -201,7 +201,7 @@ func (c *Client) ResolveFiles(references []string) (map[string][]byte, error) {
 	var failures []*errors.ProviderError
 
 	for _, reference := range references {
-		vaultSelector, itemSelector, fileSelector, parseErr := parseFileReference(reference)
+		vaultSelector, itemSelector, sectionSelector, fileSelector, parseErr := parseFileReference(reference)
 		if parseErr != nil {
 			failures = append(failures, &errors.ProviderError{
 				Kind: errors.ProviderErrorInvalidReference, Reference: reference, Issue: parseErr.Error(),
@@ -246,7 +246,15 @@ func (c *Client) ResolveFiles(references []string) (map[string][]byte, error) {
 			itemCache[cacheKey] = item
 		}
 
-		attributes, failure := matchFile(reference, fileSelector, item)
+		sectionID := ""
+		if sectionSelector != "" {
+			sectionID, failure = matchSection(reference, sectionSelector, item.Sections)
+			if failure != nil {
+				failures = append(failures, failure)
+				continue
+			}
+		}
+		attributes, failure := matchFile(reference, fileSelector, sectionID, sectionSelector != "", item)
 		if failure != nil {
 			failures = append(failures, failure)
 			continue
@@ -268,23 +276,26 @@ func (c *Client) ResolveFiles(references []string) (map[string][]byte, error) {
 	return resolved, nil
 }
 
-func parseFileReference(reference string) (string, string, string, error) {
+func parseFileReference(reference string) (string, string, string, string, error) {
 	if !strings.HasPrefix(reference, "op://") {
-		return "", "", "", fmt.Errorf("file reference must use op://Vault/Item/filename")
+		return "", "", "", "", fmt.Errorf("file reference must use op://Vault/Item/[Section/]filename")
 	}
 	parts := strings.Split(strings.TrimPrefix(reference, "op://"), "/")
-	if len(parts) != 3 {
-		return "", "", "", fmt.Errorf("file reference must contain exactly vault, item, and filename")
+	if len(parts) != 3 && len(parts) != 4 {
+		return "", "", "", "", fmt.Errorf("file reference must contain vault, item, optional section, and filename")
 	}
 	decoded := make([]string, len(parts))
 	for i, part := range parts {
 		value, err := url.PathUnescape(part)
 		if err != nil || value == "" {
-			return "", "", "", fmt.Errorf("file reference contains an invalid or empty component")
+			return "", "", "", "", fmt.Errorf("file reference contains an invalid or empty component")
 		}
 		decoded[i] = value
 	}
-	return decoded[0], decoded[1], decoded[2], nil
+	if len(decoded) == 4 {
+		return decoded[0], decoded[1], decoded[2], decoded[3], nil
+	}
+	return decoded[0], decoded[1], "", decoded[2], nil
 }
 
 func matchVault(reference, selector string, vaults []onepassword.VaultOverview) (onepassword.VaultOverview, *errors.ProviderError) {
@@ -319,13 +330,32 @@ func matchItem(reference, selector string, items []onepassword.ItemOverview) (on
 	return matches[0], nil
 }
 
-func matchFile(reference, selector string, item onepassword.Item) (onepassword.FileAttributes, *errors.ProviderError) {
+func matchSection(reference, selector string, sections []onepassword.ItemSection) (string, *errors.ProviderError) {
+	var matches []onepassword.ItemSection
+	for _, section := range sections {
+		if section.ID == selector || section.Title == selector {
+			matches = append(matches, section)
+		}
+	}
+	if len(matches) == 0 {
+		return "", &errors.ProviderError{Kind: errors.ProviderErrorMissingReference, Reference: reference, Issue: "section not found"}
+	}
+	if len(matches) > 1 {
+		return "", &errors.ProviderError{Kind: errors.ProviderErrorAmbiguousReference, Reference: reference, Issue: "multiple sections match exactly"}
+	}
+	if matches[0].ID == "" {
+		return "", &errors.ProviderError{Kind: errors.ProviderErrorMissingReference, Reference: reference, Issue: "section has no ID"}
+	}
+	return matches[0].ID, nil
+}
+
+func matchFile(reference, selector, sectionID string, qualified bool, item onepassword.Item) (onepassword.FileAttributes, *errors.ProviderError) {
 	matches := make(map[string]onepassword.FileAttributes)
-	if item.Document != nil && item.Document.Name == selector {
+	if !qualified && item.Document != nil && item.Document.Name == selector {
 		matches[item.Document.ID] = *item.Document
 	}
 	for _, file := range item.Files {
-		if file.Attributes.Name == selector {
+		if file.Attributes.Name == selector && (!qualified || file.SectionID == sectionID) {
 			matches[file.Attributes.ID] = file.Attributes
 		}
 	}
