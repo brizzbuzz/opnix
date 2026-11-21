@@ -81,6 +81,7 @@ sudo nixos-rebuild switch --flake .
 - **[Migration Guide](./migration-guide.md)** - Upgrading from OpNix V0 to V1
 
 ### Guides
+- **[Runtime Templates](./runtime-templates.md)** - Render configuration files with secrets at runtime
 - **[Best Practices](./best-practices.md)** - Security, performance, and operational recommendations
 - **[Troubleshooting](./troubleshooting.md)** - Common issues and debugging techniques
 

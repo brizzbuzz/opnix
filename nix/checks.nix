@@ -118,6 +118,10 @@
                   kind = "file";
                 };
               };
+              templates.appConfig = {
+                path = ".config/app.conf";
+                content = "password=${hmConfig.programs.onepassword-secrets.placeholder.defaultSecret}";
+              };
             };
           };
         }
@@ -164,30 +168,53 @@
                 kind = "file";
               };
             };
+            templates.appConfig = {
+              path = "app.conf";
+              content = "password=${darwinConfig.services.onepassword-secrets.placeholder.defaultSecret}";
+              services = ["com.example.app"];
+            };
           };
         }
       ];
     }).config;
 in {
-  hm-module-evaluation = assert hmConfig.programs.onepassword-secrets.secrets.defaultSecret.kind == "field";
+  hm-module-evaluation = assert !(hmConfig.programs.onepassword-secrets.placeholder ? fileSecret);
+  assert hmConfig.programs.onepassword-secrets.placeholder.defaultSecret == "<OPNIX:7ab73f276766e0ae10ed5dbd2bad50a3db7dda14a35a05a91df135dd3769adfa>";
+  assert hmConfig.programs.onepassword-secrets.templatePaths.appConfig == "/home/opnix-test/.config/app.conf";
+  assert hmConfig.programs.onepassword-secrets.secrets.defaultSecret.kind == "field";
   assert hmConfig.programs.onepassword-secrets.secrets.fileSecret.kind == "file";
     pkgs.runCommand "opnix-hm-module-evaluation" {
+      nativeBuildInputs = [pkgs.jq];
       moduleScript = hmConfig.home.activation.retrieveOpnixSecrets;
     } ''
       config_file=$(printf '%s\n' "$moduleScript" | grep -o '/nix/store/[^ ]*-hm-opnix-declarative-secrets.json' | head -n1)
-      grep -Fq '"kind":"field"' "$config_file"
-      grep -Fq '"kind":"file"' "$config_file"
+      jq -e --arg marker '<OPNIX:${builtins.hashString "sha256" "defaultSecret"}>' '
+        any(.secrets[]; .name == "defaultSecret" and .kind == "field" and .reference == "op://Example/Service/password") and
+        any(.secrets[]; .name == "fileSecret" and .kind == "file") and
+        any(.templates[]; .name == "appConfig" and .path == "/home/opnix-test/.config/app.conf" and .content == ("password=" + $marker) and .owner == "opnix-test" and .group == "${
+        if pkgs.stdenv.isDarwin
+        then "staff"
+        else "users"
+      }" and .mode == "0600")
+      ' "$config_file" >/dev/null
       touch $out
     '';
 
-  darwin-module-evaluation = assert darwinConfig.services.onepassword-secrets.secrets.defaultSecret.kind == "field";
+  darwin-module-evaluation = assert !(darwinConfig.services.onepassword-secrets.placeholder ? fileSecret);
+  assert darwinConfig.services.onepassword-secrets.placeholder.defaultSecret == "<OPNIX:7ab73f276766e0ae10ed5dbd2bad50a3db7dda14a35a05a91df135dd3769adfa>";
+  assert darwinConfig.services.onepassword-secrets.templatePaths.appConfig == "/usr/local/var/opnix/secrets/app.conf";
+  assert darwinConfig.services.onepassword-secrets.secrets.defaultSecret.kind == "field";
   assert darwinConfig.services.onepassword-secrets.secrets.fileSecret.kind == "file";
     pkgs.runCommand "opnix-darwin-module-evaluation" {
+      nativeBuildInputs = [pkgs.jq];
       moduleScript = builtins.elemAt darwinConfig.launchd.daemons.opnix-secrets.serviceConfig.ProgramArguments 2;
     } ''
       config_file=$(printf '%s\n' "$moduleScript" | grep -o '/nix/store/[^ ]*-opnix-declarative-secrets.json' | head -n1)
-      grep -Fq '"kind":"field"' "$config_file"
-      grep -Fq '"kind":"file"' "$config_file"
+      jq -e --arg marker '<OPNIX:${builtins.hashString "sha256" "defaultSecret"}>' '
+        any(.secrets[]; .name == "defaultSecret" and .kind == "field" and .reference == "op://Example/Service/password") and
+        any(.secrets[]; .name == "fileSecret" and .kind == "file") and
+        any(.templates[]; .name == "appConfig" and .path == "/usr/local/var/opnix/secrets/app.conf" and .content == ("password=" + $marker) and .owner == "root" and .group == "root" and .mode == "0600" and .services == ["com.example.app"])
+      ' "$config_file" >/dev/null
       touch $out
     '';
 })
@@ -197,7 +224,7 @@ in {
       inherit system;
       modules = [
         ./module.nix
-        {
+        ({config, ...}: {
           system.stateVersion = "26.05";
           services.onepassword-secrets = {
             enable = true;
@@ -206,9 +233,14 @@ in {
               reference = "op://Example/Document/archive.bin";
               kind = "file";
             };
+            templates.appConfig = {
+              path = "app.conf";
+              content = "password=${config.services.onepassword-secrets.placeholder.testSecret}";
+              services.example = {};
+            };
             systemdIntegration.polling = polling;
           };
-        }
+        })
       ];
     }).config;
 
@@ -218,7 +250,12 @@ in {
     interval = "45min";
   };
 in {
-  module-evaluation = assert !(defaultPollingConfig.systemd.services ? opnix-secrets-poll);
+  module-evaluation = assert !(defaultPollingConfig.services.onepassword-secrets.placeholder ? testFile);
+  assert defaultPollingConfig.services.onepassword-secrets.placeholder.testSecret == "<OPNIX:36f0f4b6056ac4d0a4b7dbb7c94597c1d44c9d6c84dc370121deedbde5049560>";
+  assert defaultPollingConfig.services.onepassword-secrets.templatePaths.appConfig == "/var/lib/opnix/secrets/app.conf";
+  assert builtins.elem "opnix-secrets.service" defaultPollingConfig.systemd.services.example.after;
+  assert builtins.elem "opnix-secrets.service" defaultPollingConfig.systemd.services.example.wants;
+  assert !(defaultPollingConfig.systemd.services ? opnix-secrets-poll);
   assert !(defaultPollingConfig.systemd.timers ? opnix-secrets-poll);
   assert defaultPollingConfig.services.onepassword-secrets.secrets.testSecret.kind == "field";
   assert defaultPollingConfig.services.onepassword-secrets.secrets.testFile.kind == "file";
@@ -230,11 +267,15 @@ in {
   assert enabledPollingConfig.systemd.timers.opnix-secrets-poll.timerConfig.OnUnitActiveSec == "45min";
   assert enabledPollingConfig.systemd.timers.opnix-secrets-poll.timerConfig.Unit == "opnix-secrets-poll.service";
     pkgs.runCommand "opnix-module-evaluation" {
+      nativeBuildInputs = [pkgs.jq];
       moduleScript = defaultPollingConfig.systemd.services.opnix-secrets.script;
     } ''
       config_file=$(printf '%s\n' "$moduleScript" | grep -o '/nix/store/[^ ]*-opnix-declarative-secrets.json' | head -n1)
-      grep -Fq '"kind":"field"' "$config_file"
-      grep -Fq '"kind":"file"' "$config_file"
+      jq -e --arg marker '<OPNIX:${builtins.hashString "sha256" "testSecret"}>' '
+        any(.secrets[]; .name == "testSecret" and .kind == "field" and .reference == "op://Example/Service/password") and
+        any(.secrets[]; .name == "testFile" and .kind == "file") and
+        any(.templates[]; .name == "appConfig" and .path == "/var/lib/opnix/secrets/app.conf" and .content == ("password=" + $marker) and .owner == "root" and .group == "root" and .mode == "0600" and .services.example.restart == true)
+      ' "$config_file" >/dev/null
       touch $out
     '';
 })

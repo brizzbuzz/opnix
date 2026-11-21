@@ -20,6 +20,17 @@ func NewValidator() *Validator {
 	return &Validator{}
 }
 
+// ValidateTemplate checks template output metadata without accessing its content.
+func (v *Validator) ValidateTemplate(path, owner, group, mode string) error {
+	if err := v.validatePath(path, "template", map[string]string{}); err != nil {
+		return err
+	}
+	if err := v.validateOwnership(owner, group, "template"); err != nil {
+		return err
+	}
+	return v.validateMode(mode, "template")
+}
+
 // Secret represents a secret for validation
 type SecretData struct {
 	Path         string
