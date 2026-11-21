@@ -37,15 +37,16 @@ func TestWriteTemplateClearsSpecialPermissionBits(t *testing.T) {
 		t.Fatal(err)
 	}
 	const special = os.ModeSetuid | os.ModeSetgid | os.ModeSticky
-	if err := os.Chmod(path, 0600|special); err != nil {
+	// Nix build filters reject setting setuid/setgid, but permit the sticky bit.
+	if err := os.Chmod(path, 0600|os.ModeSticky); err != nil {
 		t.Fatal(err)
 	}
 	before, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before.Mode()&special == 0 {
-		t.Skip("filesystem did not retain any special permission bits")
+	if before.Mode()&os.ModeSticky == 0 {
+		t.Skip("filesystem did not retain the sticky bit")
 	}
 	if before.Mode().Perm() != 0600 {
 		t.Fatalf("unexpected setup mode: %v", before.Mode())
