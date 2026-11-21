@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0] - 2026-11-21
+
+### Features
+
+- Add runtime secret templates for NixOS, nix-darwin, and Home Manager (#58). Templates substitute secret placeholders at runtime; substitution does not escape values for the output format.
+- Support section-qualified file references with `op://Vault/Item/Section/filename`, matching sections by title or ID (#60).
+
+### Bug fixes
+
+- Use nix-darwin's built-in wait-for-store guard before fetching secrets at startup (#59).
+
 ## [0.11.0] - 2026-08-18
 
 ### 🚀 Features
