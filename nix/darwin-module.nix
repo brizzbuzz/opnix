@@ -355,56 +355,52 @@ in {
 
       # Create launchd service for macOS
       launchd.daemons.opnix-secrets = {
+        script = ''
+          # Ensure output directory exists with correct permissions
+          mkdir -p ${cfg.outputDir}
+          chmod 750 ${cfg.outputDir}
+
+          # Set up token file with correct group permissions if it exists
+          if [ -f ${cfg.tokenFile} ]; then
+            # Ensure token file has correct ownership and permissions
+            chown root:${opnixGroup} ${cfg.tokenFile}
+            chmod 640 ${cfg.tokenFile}
+          fi
+
+          # Handle missing token file gracefully - don't fail system boot
+          if [ ! -f ${cfg.tokenFile} ]; then
+            echo "WARNING: Token file ${cfg.tokenFile} does not exist!" >&2
+            echo "INFO: Using existing secrets, skipping updates" >&2
+            echo "INFO: Run 'opnix token set' to configure the token" >&2
+            exit 0
+          fi
+
+          # Validate token file permissions
+          if [ ! -r ${cfg.tokenFile} ]; then
+            echo "ERROR: Token file ${cfg.tokenFile} is not readable!" >&2
+            echo "INFO: Check file permissions or group membership" >&2
+            exit 1
+          fi
+
+          # Validate token is not empty
+          if [ ! -s ${cfg.tokenFile} ]; then
+            echo "ERROR: Token file is empty!" >&2
+            echo "INFO: Run 'opnix token set' to configure the token" >&2
+            exit 1
+          fi
+
+          # Run the secrets retrieval tool for each config file
+          ${lib.concatMapStringsSep "\n" (configFile: ''
+              echo "Processing config file: ${configFile}"
+              ${pkgsWithOverlay.opnix}/bin/opnix secret \
+                -token-file ${cfg.tokenFile} \
+                -config ${configFile} \
+                -output ${cfg.outputDir}
+            '')
+            allConfigFiles}
+        '';
         serviceConfig = {
           Label = "org.nixos.opnix-secrets";
-          ProgramArguments = [
-            "/bin/sh"
-            "-c"
-            ''
-              # Ensure output directory exists with correct permissions
-              mkdir -p ${cfg.outputDir}
-              chmod 750 ${cfg.outputDir}
-
-              # Set up token file with correct group permissions if it exists
-              if [ -f ${cfg.tokenFile} ]; then
-                # Ensure token file has correct ownership and permissions
-                chown root:${opnixGroup} ${cfg.tokenFile}
-                chmod 640 ${cfg.tokenFile}
-              fi
-
-              # Handle missing token file gracefully - don't fail system boot
-              if [ ! -f ${cfg.tokenFile} ]; then
-                echo "WARNING: Token file ${cfg.tokenFile} does not exist!" >&2
-                echo "INFO: Using existing secrets, skipping updates" >&2
-                echo "INFO: Run 'opnix token set' to configure the token" >&2
-                exit 0
-              fi
-
-              # Validate token file permissions
-              if [ ! -r ${cfg.tokenFile} ]; then
-                echo "ERROR: Token file ${cfg.tokenFile} is not readable!" >&2
-                echo "INFO: Check file permissions or group membership" >&2
-                exit 1
-              fi
-
-              # Validate token is not empty
-              if [ ! -s ${cfg.tokenFile} ]; then
-                echo "ERROR: Token file is empty!" >&2
-                echo "INFO: Run 'opnix token set' to configure the token" >&2
-                exit 1
-              fi
-
-              # Run the secrets retrieval tool for each config file
-              ${lib.concatMapStringsSep "\n" (configFile: ''
-                  echo "Processing config file: ${configFile}"
-                  ${pkgsWithOverlay.opnix}/bin/opnix secret \
-                    -token-file ${cfg.tokenFile} \
-                    -config ${configFile} \
-                    -output ${cfg.outputDir}
-                '')
-                allConfigFiles}
-            ''
-          ];
           RunAtLoad = true;
           KeepAlive = {
             SuccessfulExit = false;

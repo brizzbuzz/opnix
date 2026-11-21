@@ -205,9 +205,16 @@ in {
   assert darwinConfig.services.onepassword-secrets.templatePaths.appConfig == "/usr/local/var/opnix/secrets/app.conf";
   assert darwinConfig.services.onepassword-secrets.secrets.defaultSecret.kind == "field";
   assert darwinConfig.services.onepassword-secrets.secrets.fileSecret.kind == "file";
+  assert darwinConfig.launchd.daemons.opnix-secrets.script != "";
+  assert !(darwinConfig.launchd.daemons.opnix-secrets.serviceConfig ? ProgramArguments);
+  assert darwinConfig.launchd.daemons.opnix-secrets.serviceConfig.Label == "org.nixos.opnix-secrets";
+  assert darwinConfig.launchd.daemons.opnix-secrets.serviceConfig.RunAtLoad;
+  assert darwinConfig.launchd.daemons.opnix-secrets.serviceConfig.KeepAlive.SuccessfulExit == false;
+  assert darwinConfig.launchd.daemons.opnix-secrets.serviceConfig.StandardErrorPath == "/var/log/opnix-secrets.log";
+  assert darwinConfig.launchd.daemons.opnix-secrets.serviceConfig.StandardOutPath == "/var/log/opnix-secrets.log";
     pkgs.runCommand "opnix-darwin-module-evaluation" {
       nativeBuildInputs = [pkgs.jq];
-      moduleScript = builtins.elemAt darwinConfig.launchd.daemons.opnix-secrets.serviceConfig.ProgramArguments 2;
+      moduleScript = darwinConfig.launchd.daemons.opnix-secrets.script;
     } ''
       config_file=$(printf '%s\n' "$moduleScript" | grep -o '/nix/store/[^ ]*-opnix-declarative-secrets.json' | head -n1)
       jq -e --arg marker '<OPNIX:${builtins.hashString "sha256" "defaultSecret"}>' '
